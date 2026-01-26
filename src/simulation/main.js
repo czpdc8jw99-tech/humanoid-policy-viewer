@@ -16,7 +16,8 @@ export class MuJoCoDemo {
       paused: true,
       current_motion: 'default'
     };
-    this.policyRunner = null;
+    this.policyRunner = null; // 保持向后兼容（单机器人模式）
+    this.policyRunners = []; // 多机器人模式 (v7.0.4)
     this.kpPolicy = null;
     this.kdPolicy = null;
     this.actionTarget = null;
@@ -504,25 +505,32 @@ export class MuJoCoDemo {
   }
 
   async main_loop() {
-    if (!this.policyRunner) {
+    // 检测多机器人模式并检查policyRunner (v7.0.4)
+    const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
+    const hasPolicyRunner = isMultiRobot 
+      ? (this.policyRunners && this.policyRunners.length > 0)
+      : this.policyRunner;
+    
+    if (!hasPolicyRunner) {
       return;
     }
 
     while (this.alive) {
       const loopStart = performance.now();
 
-      if (!this.params.paused && this.model && this.data && this.simulation && this.policyRunner) {
-        // 检测是否是多机器人模式 (v7.0.1: 每次循环都重新检测)
-        const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
-        
-        // 状态读取和推理 (v7.0.3: 每个机器人独立推理)
+      if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
+        // 状态读取和推理 (v7.0.4: 每个机器人使用独立的policyRunner)
         let actionTargets = [];
         if (isMultiRobot) {
           // 多机器人模式：为每个机器人独立推理
           try {
             for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
+              if (!this.policyRunners[robotIdx]) {
+                console.warn(`Policy runner not found for robot ${robotIdx + 1}`);
+                continue;
+              }
               const state = this.readPolicyStateForRobot(robotIdx);
-              const actionTarget = await this.policyRunner.step(state);
+              const actionTarget = await this.policyRunners[robotIdx].step(state);
               actionTargets[robotIdx] = actionTarget;
             }
             // 保持向后兼容：第一个机器人的actionTarget也保存到this.actionTarget
@@ -810,10 +818,22 @@ export class MuJoCoDemo {
       this.setMultiRobotInitialPositions();
     }
     this.actionTarget = null;
-    if (this.policyRunner) {
-      // 检测多机器人模式并使用相应的状态读取方法 (v7.0.0)
-      const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
-      const state = isMultiRobot ? this.readPolicyStateForRobot(0) : this.readPolicyState();
+    
+    // 检测多机器人模式并重置所有policyRunner (v7.0.4)
+    const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
+    
+    if (isMultiRobot && this.policyRunners) {
+      // 多机器人模式：重置所有policyRunner
+      for (let robotIdx = 0; robotIdx < this.policyRunners.length; robotIdx++) {
+        if (this.policyRunners[robotIdx]) {
+          const state = this.readPolicyStateForRobot(robotIdx);
+          this.policyRunners[robotIdx].reset(state);
+        }
+      }
+      this.params.current_motion = 'default';
+    } else if (this.policyRunner) {
+      // 单机器人模式：保持原有逻辑
+      const state = this.readPolicyState();
       this.policyRunner.reset(state);
       this.params.current_motion = 'default';
     }

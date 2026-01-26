@@ -108,8 +108,18 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.currentPolicyPath = policy_path;
   console.log('Reloading policy:', policy_path);
 
-  while (this.policyRunner?.isInferencing) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  // 等待所有policyRunner完成推理 (v7.0.4)
+  const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
+  if (isMultiRobot && this.policyRunners) {
+    for (const runner of this.policyRunners) {
+      while (runner?.isInferencing) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+  } else {
+    while (this.policyRunner?.isInferencing) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
   }
 
   const response = await fetch(policy_path);
@@ -188,27 +198,74 @@ export async function reloadPolicy(policy_path, options = {}) {
 
   this.simulation.resetData();
   this.simulation.forward();
-  this.policyRunner = new PolicyRunner(
-    {
-      ...config,
-      tracking: trackingConfig,
-      policy_joint_names: policyJointNames,
-      action_scale: config.action_scale,
-      default_joint_pos: this.defaultJposPolicy
-    },
-    {
-      policyJointNames,
-      actionScale: config.action_scale,
-      defaultJointPos: this.defaultJposPolicy
+  
+  // 检测多机器人模式 (v7.0.4)
+  const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
+  
+  if (isMultiRobot) {
+    // 多机器人模式：为每个机器人创建独立的policyRunner
+    // 清理旧的policyRunners（如果有）
+    if (this.policyRunners) {
+      for (const runner of this.policyRunners) {
+        // PolicyRunner可能没有显式的清理方法，但会被垃圾回收
+      }
     }
-  );
-  await this.policyRunner.init();
-
-  const state = this.readPolicyState?.();
-  if (state) {
-    this.policyRunner.reset(state);
+    this.policyRunners = [];
+    
+    for (let robotIdx = 0; robotIdx < this.robotConfigs.length; robotIdx++) {
+      const policyRunner = new PolicyRunner(
+        {
+          ...config,
+          tracking: trackingConfig,
+          policy_joint_names: policyJointNames,
+          action_scale: config.action_scale,
+          default_joint_pos: this.defaultJposPolicy
+        },
+        {
+          policyJointNames,
+          actionScale: config.action_scale,
+          defaultJointPos: this.defaultJposPolicy
+        }
+      );
+      await policyRunner.init();
+      
+      const state = this.readPolicyStateForRobot?.(robotIdx);
+      if (state) {
+        policyRunner.reset(state);
+      } else {
+        policyRunner.reset();
+      }
+      
+      this.policyRunners[robotIdx] = policyRunner;
+      console.log(`Created policy runner for robot ${robotIdx + 1}`);
+    }
+    
+    // 保持向后兼容：第一个机器人的policyRunner也保存到this.policyRunner
+    this.policyRunner = this.policyRunners[0];
   } else {
-    this.policyRunner.reset();
+    // 单机器人模式：保持原有逻辑
+    this.policyRunner = new PolicyRunner(
+      {
+        ...config,
+        tracking: trackingConfig,
+        policy_joint_names: policyJointNames,
+        action_scale: config.action_scale,
+        default_joint_pos: this.defaultJposPolicy
+      },
+      {
+        policyJointNames,
+        actionScale: config.action_scale,
+        defaultJointPos: this.defaultJposPolicy
+      }
+    );
+    await this.policyRunner.init();
+
+    const state = this.readPolicyState?.();
+    if (state) {
+      this.policyRunner.reset(state);
+    } else {
+      this.policyRunner.reset();
+    }
   }
 
   this.params.current_motion = 'default';
