@@ -501,33 +501,41 @@ export class MuJoCoDemo {
   }
 
   async main_loop() {
-    // 检测多机器人模式并检查policyRunner (v7.0.4)
-    const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
-    const hasPolicyRunner = isMultiRobot 
-      ? (this.policyRunners && this.policyRunners.length > 0)
-      : this.policyRunner;
-    
-    // v7.1.2: 添加基础日志确认模式
-    if (isMultiRobot) {
-      console.log(`[DEBUG] Multi-robot mode:`, {
-        robotJointMappingsLength: this.robotJointMappings?.length,
-        policyRunnersLength: this.policyRunners?.length,
-        isMultiRobot: true
-      });
-    } else {
-      console.log(`[DEBUG] Single-robot mode:`, {
-        robotJointMappingsLength: this.robotJointMappings?.length,
-        hasPolicyRunner: !!this.policyRunner,
-        isMultiRobot: false
-      });
-    }
-    
-    if (!hasPolicyRunner) {
+    // v7.1.3: 移除初始模式检测，改为在循环内动态检测
+    if (!this.policyRunner && (!this.policyRunners || this.policyRunners.length === 0)) {
       return;
     }
 
     while (this.alive) {
       const loopStart = performance.now();
+      
+      // v7.1.3: 在每次循环中动态检测多机器人模式（因为robotJointMappings可能在初始化后才被填充）
+      const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
+      const hasPolicyRunner = isMultiRobot 
+        ? (this.policyRunners && this.policyRunners.length > 0)
+        : this.policyRunner;
+      
+      // v7.1.3: 只在第一次检测到模式变化时输出日志（避免刷屏）
+      if (!this._lastMultiRobotMode && isMultiRobot) {
+        console.log(`[DEBUG] Multi-robot mode detected:`, {
+          robotJointMappingsLength: this.robotJointMappings?.length,
+          policyRunnersLength: this.policyRunners?.length,
+          isMultiRobot: true
+        });
+        this._lastMultiRobotMode = true;
+      } else if (this._lastMultiRobotMode === undefined && !isMultiRobot) {
+        // 只在第一次且是单机器人模式时输出（避免初始化时的误报）
+        if (this.robotJointMappings && this.robotJointMappings.length === 0) {
+          // 这是初始化阶段，不输出日志
+        } else {
+          console.log(`[DEBUG] Single-robot mode:`, {
+            robotJointMappingsLength: this.robotJointMappings?.length,
+            hasPolicyRunner: !!this.policyRunner,
+            isMultiRobot: false
+          });
+          this._lastMultiRobotMode = false;
+        }
+      }
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
         // 状态读取和推理 (v7.0.9: 每个机器人使用独立的policyRunner，添加详细日志)
