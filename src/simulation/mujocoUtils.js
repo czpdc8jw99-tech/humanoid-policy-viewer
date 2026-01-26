@@ -143,7 +143,30 @@ export async function reloadPolicy(policy_path, options = {}) {
     throw new Error('Policy configuration must include a non-empty policy_joint_names list');
   }
 
-  configureJointMappings(this, policyJointNames);
+  // 检测多机器人模式 (v7.0.0)
+  const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
+  
+  if (isMultiRobot) {
+    // 多机器人模式：为每个机器人建立映射
+    this.robotJointMappings = [];
+    
+    for (let robotIdx = 0; robotIdx < this.robotConfigs.length; robotIdx++) {
+      const robotPrefix = robotIdx === 0 ? '' : `robot${robotIdx + 1}_`;
+      configureJointMappingsWithPrefix(this, policyJointNames, robotPrefix, robotIdx);
+    }
+    
+    // 第一个机器人的映射同时更新向后兼容的数组
+    if (this.robotJointMappings[0]) {
+      this.qpos_adr_policy = this.robotJointMappings[0].qpos_adr_policy.slice();
+      this.qvel_adr_policy = this.robotJointMappings[0].qvel_adr_policy.slice();
+      this.ctrl_adr_policy = this.robotJointMappings[0].ctrl_adr_policy.slice();
+      this.numActions = this.robotJointMappings[0].numActions;
+    }
+  } else {
+    // 单机器人模式（原有逻辑）
+    configureJointMappings(this, policyJointNames);
+  }
+  
   const configDefaultJointPos = Array.isArray(config.default_joint_pos)
     ? config.default_joint_pos
     : null;
@@ -529,6 +552,70 @@ function configureJointMappings(demo, jointNames) {
 
   demo.defaultJposPolicy = new Float32Array(demo.numActions);
   demo.defaultJposPolicy.fill(0.0);
+}
+
+/**
+ * 为指定机器人配置关节映射（多机器人支持）(v7.0.0)
+ * 复用configureJointMappings的逻辑，但支持关节名称前缀
+ * @param {MuJoCoDemo} demo - MuJoCoDemo实例
+ * @param {Array<string>} jointNames - 策略关节名称列表（原始名称，无前缀）
+ * @param {string} prefix - 机器人前缀（如 'robot2_' 或 ''）
+ * @param {number} robotIndex - 机器人索引
+ */
+function configureJointMappingsWithPrefix(demo, jointNames, prefix, robotIndex) {
+  const model = demo.model;
+  const mujoco = demo.mujoco;
+  
+  // 构建带前缀的关节名称列表
+  const prefixedJointNames = jointNames.map(name => prefix + name);
+  
+  // 建立actuator到joint的映射（和configureJointMappings一样）
+  const jointTransmission = mujoco.mjtTrn.mjTRN_JOINT.value;
+  const actuator2joint = [];
+  for (let i = 0; i < model.nu; i++) {
+    if (model.actuator_trntype[i] !== jointTransmission) {
+      continue; // 跳过非关节执行器
+    }
+    actuator2joint.push(model.actuator_trnid[2 * i]);
+  }
+  
+  // 创建映射对象
+  const mapping = {
+    qpos_adr_policy: [],
+    qvel_adr_policy: [],
+    ctrl_adr_policy: [],
+    numActions: 0
+  };
+  
+  // 为每个策略关节建立映射
+  for (let i = 0; i < prefixedJointNames.length; i++) {
+    const fullJointName = prefixedJointNames[i];
+    const jointIdx = demo.jointNamesMJC.indexOf(fullJointName);
+    
+    if (jointIdx < 0) {
+      throw new Error(`Joint "${fullJointName}" not found in MuJoCo model for robot ${robotIndex + 1}`);
+    }
+    
+    // 查找对应的执行器
+    const actuatorIdx = actuator2joint.findIndex((jointId) => jointId === jointIdx);
+    if (actuatorIdx < 0) {
+      throw new Error(`No actuator mapped to joint "${fullJointName}" for robot ${robotIndex + 1}`);
+    }
+    
+    mapping.qpos_adr_policy.push(model.jnt_qposadr[jointIdx]);
+    mapping.qvel_adr_policy.push(model.jnt_dofadr[jointIdx]);
+    mapping.ctrl_adr_policy.push(actuatorIdx);
+  }
+  
+  mapping.numActions = prefixedJointNames.length;
+  
+  // 存储到robotJointMappings数组
+  if (!demo.robotJointMappings) {
+    demo.robotJointMappings = [];
+  }
+  demo.robotJointMappings[robotIndex] = mapping;
+  
+  console.log(`Configured joint mappings for robot ${robotIndex + 1} (prefix: "${prefix}")`);
 }
 
 export async function downloadExampleScenesFolder(mujoco) {

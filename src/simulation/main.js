@@ -196,6 +196,8 @@ export class MuJoCoDemo {
     this.robotConfigs = []; // 机器人配置数组，包含每个机器人的位置信息 {x, y, z}
     this.robotPelvisBodyIds = []; // 存储每个机器人的pelvis body ID，用于快速定位和聚焦
     this.followRobotIndex = 0; // 当前跟随/聚焦的机器人索引（0-based，默认第一个）
+    // 多机器人关节映射 (v7.0.0)
+    this.robotJointMappings = []; // 每个机器人的关节映射数组
   }
   
   /**
@@ -506,11 +508,22 @@ export class MuJoCoDemo {
       return;
     }
 
+    // 检测是否是多机器人模式 (v7.0.0)
+    const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
+
     while (this.alive) {
       const loopStart = performance.now();
 
       if (!this.params.paused && this.model && this.data && this.simulation && this.policyRunner) {
-        const state = this.readPolicyState();
+        // 状态读取和推理（两种模式共用）(v7.0.0)
+        let state;
+        if (isMultiRobot) {
+          // 多机器人模式：使用第一个机器人的状态
+          state = this.readPolicyStateForRobot(0);
+        } else {
+          // 单机器人模式：使用原有方法
+          state = this.readPolicyState();
+        }
 
         try {
           this.actionTarget = await this.policyRunner.step(state);
@@ -522,25 +535,57 @@ export class MuJoCoDemo {
 
         for (let substep = 0; substep < this.decimation; substep++) {
           if (this.control_type === 'joint_position') {
-            for (let i = 0; i < this.numActions; i++) {
-              const qpos_adr = this.qpos_adr_policy[i];
-              const qvel_adr = this.qvel_adr_policy[i];
-              const ctrl_adr = this.ctrl_adr_policy[i];
-
-              const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
-              const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
-              const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
-              const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
-              let ctrlValue = torque;
-              const ctrlRange = this.model?.actuator_ctrlrange;
-              if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
-                const min = ctrlRange[ctrl_adr * 2];
-                const max = ctrlRange[(ctrl_adr * 2) + 1];
-                if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
-                  ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+            if (isMultiRobot) {
+              // 多机器人模式：应用到所有机器人 (v7.0.0)
+              for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
+                const mapping = this.robotJointMappings[robotIdx];
+                if (!mapping) continue;
+                
+                for (let i = 0; i < mapping.numActions; i++) {
+                  const qposAdr = mapping.qpos_adr_policy[i];
+                  const qvelAdr = mapping.qvel_adr_policy[i];
+                  const ctrlAdr = mapping.ctrl_adr_policy[i];
+                  
+                  const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
+                  const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
+                  const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
+                  const torque = kp * (targetJpos - this.simulation.qpos[qposAdr]) 
+                               + kd * (0 - this.simulation.qvel[qvelAdr]);
+                  
+                  let ctrlValue = torque;
+                  const ctrlRange = this.model?.actuator_ctrlrange;
+                  if (ctrlRange && ctrlRange.length >= (ctrlAdr + 1) * 2) {
+                    const min = ctrlRange[ctrlAdr * 2];
+                    const max = ctrlRange[(ctrlAdr * 2) + 1];
+                    if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
+                      ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+                    }
+                  }
+                  this.simulation.ctrl[ctrlAdr] = ctrlValue;
                 }
               }
-              this.simulation.ctrl[ctrl_adr] = ctrlValue;
+            } else {
+              // 单机器人模式（原有逻辑）
+              for (let i = 0; i < this.numActions; i++) {
+                const qpos_adr = this.qpos_adr_policy[i];
+                const qvel_adr = this.qvel_adr_policy[i];
+                const ctrl_adr = this.ctrl_adr_policy[i];
+
+                const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
+                const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
+                const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
+                const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
+                let ctrlValue = torque;
+                const ctrlRange = this.model?.actuator_ctrlrange;
+                if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
+                  const min = ctrlRange[ctrl_adr * 2];
+                  const max = ctrlRange[(ctrl_adr * 2) + 1];
+                  if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
+                    ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+                  }
+                }
+                this.simulation.ctrl[ctrl_adr] = ctrlValue;
+              }
             }
           } else if (this.control_type === 'torque') {
             console.error('Torque control not implemented yet.');
@@ -686,6 +731,44 @@ export class MuJoCoDemo {
     };
   }
 
+  /**
+   * 读取指定机器人的策略状态（多机器人支持）(v7.0.0)
+   * @param {number} robotIndex - 机器人索引（0-based）
+   * @returns {Object} 状态对象 {jointPos, jointVel, rootPos, rootQuat, rootAngVel}
+   */
+  readPolicyStateForRobot(robotIndex = 0) {
+    const mapping = this.robotJointMappings?.[robotIndex];
+    if (!mapping) {
+      // 如果没有映射，回退到单机器人模式
+      return this.readPolicyState();
+    }
+    
+    const qpos = this.simulation.qpos;
+    const qvel = this.simulation.qvel;
+    
+    // 读取关节状态
+    const jointPos = new Float32Array(mapping.numActions);
+    const jointVel = new Float32Array(mapping.numActions);
+    for (let i = 0; i < mapping.numActions; i++) {
+      jointPos[i] = qpos[mapping.qpos_adr_policy[i]];
+      jointVel[i] = qvel[mapping.qvel_adr_policy[i]];
+    }
+    
+    // 读取根状态（简化版：暂时使用qpos[0-6]，后续可优化为使用正确的freejoint地址）
+    // TODO: 后续需要根据freejoint地址正确读取根状态
+    const rootPos = new Float32Array([qpos[0], qpos[1], qpos[2]]);
+    const rootQuat = new Float32Array([qpos[3], qpos[4], qpos[5], qpos[6]]);
+    const rootAngVel = new Float32Array([qvel[3], qvel[4], qvel[5]]);
+    
+    return {
+      jointPos,
+      jointVel,
+      rootPos,
+      rootQuat,
+      rootAngVel
+    };
+  }
+
   resetSimulation() {
     if (!this.simulation) {
       return;
@@ -693,9 +776,15 @@ export class MuJoCoDemo {
     this.params.paused = true;
     this.simulation.resetData();
     this.simulation.forward();
+    // 多机器人模式：重新设置初始位置 (v7.0.0)
+    if (this.robotConfigs && this.robotConfigs.length > 1) {
+      this.setMultiRobotInitialPositions();
+    }
     this.actionTarget = null;
     if (this.policyRunner) {
-      const state = this.readPolicyState();
+      // 检测多机器人模式并使用相应的状态读取方法 (v7.0.0)
+      const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
+      const state = isMultiRobot ? this.readPolicyStateForRobot(0) : this.readPolicyState();
       this.policyRunner.reset(state);
       this.params.current_motion = 'default';
     }
