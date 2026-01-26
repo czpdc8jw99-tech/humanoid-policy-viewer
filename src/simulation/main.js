@@ -515,38 +515,52 @@ export class MuJoCoDemo {
         // 检测是否是多机器人模式 (v7.0.1: 每次循环都重新检测)
         const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
         
-        // 状态读取和推理（两种模式共用）(v7.0.0)
-        let state;
+        // 状态读取和推理 (v7.0.3: 每个机器人独立推理)
+        let actionTargets = [];
         if (isMultiRobot) {
-          // 多机器人模式：使用第一个机器人的状态
-          state = this.readPolicyStateForRobot(0);
+          // 多机器人模式：为每个机器人独立推理
+          try {
+            for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
+              const state = this.readPolicyStateForRobot(robotIdx);
+              const actionTarget = await this.policyRunner.step(state);
+              actionTargets[robotIdx] = actionTarget;
+            }
+            // 保持向后兼容：第一个机器人的actionTarget也保存到this.actionTarget
+            this.actionTarget = actionTargets[0];
+          } catch (e) {
+            console.error('Inference error in main loop:', e);
+            this.alive = false;
+            break;
+          }
         } else {
           // 单机器人模式：使用原有方法
-          state = this.readPolicyState();
-        }
-
-        try {
-          this.actionTarget = await this.policyRunner.step(state);
-        } catch (e) {
-          console.error('Inference error in main loop:', e);
-          this.alive = false;
-          break;
+          const state = this.readPolicyState();
+          try {
+            this.actionTarget = await this.policyRunner.step(state);
+            actionTargets = [this.actionTarget]; // 保持数组格式一致
+          } catch (e) {
+            console.error('Inference error in main loop:', e);
+            this.alive = false;
+            break;
+          }
         }
 
         for (let substep = 0; substep < this.decimation; substep++) {
           if (this.control_type === 'joint_position') {
             if (isMultiRobot) {
-              // 多机器人模式：应用到所有机器人 (v7.0.0)
+              // 多机器人模式：应用到所有机器人 (v7.0.3: 使用各自的actionTarget)
               for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
                 const mapping = this.robotJointMappings[robotIdx];
                 if (!mapping) continue;
+                
+                const actionTarget = actionTargets[robotIdx];
                 
                 for (let i = 0; i < mapping.numActions; i++) {
                   const qposAdr = mapping.qpos_adr_policy[i];
                   const qvelAdr = mapping.qvel_adr_policy[i];
                   const ctrlAdr = mapping.ctrl_adr_policy[i];
                   
-                  const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
+                  const targetJpos = actionTarget ? actionTarget[i] : 0.0;
                   const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
                   const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
                   const torque = kp * (targetJpos - this.simulation.qpos[qposAdr]) 
