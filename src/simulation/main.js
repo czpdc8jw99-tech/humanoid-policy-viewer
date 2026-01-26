@@ -543,12 +543,14 @@ export class MuJoCoDemo {
                 continue;
               }
               actionTargets[robotIdx] = actionTarget;
-              // v7.0.9: 添加调试日志（仅对第二个机器人，且只在第一次）
-              if (robotIdx === 1 && actionTargets.length === 2) {
+              // v7.1.1: 添加调试日志（仅对第二个机器人）
+              if (robotIdx === 1) {
                 console.log(`[DEBUG] actionTargets[1] assigned:`, {
                   type: actionTarget.constructor.name,
                   length: actionTarget.length,
-                  first5: Array.from(actionTarget).slice(0, 5)
+                  first5: Array.from(actionTarget).slice(0, 5),
+                  actionTargetsLength: actionTargets.length,
+                  actionTargetsKeys: Object.keys(actionTargets)
                 });
               }
             }
@@ -594,15 +596,18 @@ export class MuJoCoDemo {
                 }
                 
                 const actionTarget = actionTargets[robotIdx];
-                // v7.0.9: 添加详细调试日志（仅对第二个机器人，且只在第一次substep）
+                // v7.1.1: 添加详细调试日志（仅对第二个机器人，且只在第一次substep）
                 if (robotIdx === 1 && substep === 0) {
-                  console.log(`[DEBUG] Robot 1 control application:`, {
+                  console.log(`[DEBUG] Robot 1 control application START:`, {
                     actionTargetExists: !!actionTarget,
                     actionTargetType: actionTarget ? actionTarget.constructor.name : 'undefined',
                     actionTargetLength: actionTarget?.length,
                     actionTargetsLength: actionTargets.length,
                     actionTargetsKeys: Object.keys(actionTargets),
-                    actionTargetsHas1: 1 in actionTargets
+                    actionTargetsHas0: 0 in actionTargets,
+                    actionTargetsHas1: 1 in actionTargets,
+                    actionTargets0Type: actionTargets[0] ? actionTargets[0].constructor.name : 'undefined',
+                    actionTargets1Type: actionTargets[1] ? actionTargets[1].constructor.name : 'undefined'
                   });
                 }
                 
