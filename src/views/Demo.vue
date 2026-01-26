@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.0.6</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.0.7</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn

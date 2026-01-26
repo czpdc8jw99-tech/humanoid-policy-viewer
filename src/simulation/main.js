@@ -515,7 +515,7 @@ export class MuJoCoDemo {
       const loopStart = performance.now();
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
-        // 状态读取和推理 (v7.0.4: 每个机器人使用独立的policyRunner)
+        // 状态读取和推理 (v7.0.7: 每个机器人使用独立的policyRunner，添加actionTarget检查)
         let actionTargets = [];
         if (isMultiRobot) {
           // 多机器人模式：为每个机器人独立推理
@@ -526,7 +526,15 @@ export class MuJoCoDemo {
                 continue;
               }
               const state = this.readPolicyStateForRobot(robotIdx);
+              if (!state) {
+                console.warn(`Failed to read state for robot ${robotIdx + 1}`);
+                continue;
+              }
               const actionTarget = await this.policyRunners[robotIdx].step(state);
+              if (!actionTarget || !Array.isArray(actionTarget) || actionTarget.length === 0) {
+                console.error(`Policy runner ${robotIdx + 1} returned invalid actionTarget:`, actionTarget);
+                continue;
+              }
               actionTargets[robotIdx] = actionTarget;
             }
             // 保持向后兼容：第一个机器人的actionTarget也保存到this.actionTarget
@@ -552,19 +560,27 @@ export class MuJoCoDemo {
         for (let substep = 0; substep < this.decimation; substep++) {
           if (this.control_type === 'joint_position') {
             if (isMultiRobot) {
-              // 多机器人模式：应用到所有机器人 (v7.0.3: 使用各自的actionTarget)
+              // 多机器人模式：应用到所有机器人 (v7.0.7: 使用各自的actionTarget，添加检查)
               for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
                 const mapping = this.robotJointMappings[robotIdx];
                 if (!mapping) continue;
                 
                 const actionTarget = actionTargets[robotIdx];
+                if (!actionTarget || !Array.isArray(actionTarget)) {
+                  // v7.0.7: 如果actionTarget不存在，跳过这个机器人（避免应用全0控制）
+                  if (substep === 0 && robotIdx > 0) {
+                    // 只在第一次substep时警告，避免日志过多
+                    console.warn(`ActionTarget not found for robot ${robotIdx + 1}, skipping control application`);
+                  }
+                  continue;
+                }
                 
                 for (let i = 0; i < mapping.numActions; i++) {
                   const qposAdr = mapping.qpos_adr_policy[i];
                   const qvelAdr = mapping.qvel_adr_policy[i];
                   const ctrlAdr = mapping.ctrl_adr_policy[i];
                   
-                  const targetJpos = actionTarget ? actionTarget[i] : 0.0;
+                  const targetJpos = actionTarget[i] ?? 0.0;
                   const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
                   const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
                   const torque = kp * (targetJpos - this.simulation.qpos[qposAdr]) 
