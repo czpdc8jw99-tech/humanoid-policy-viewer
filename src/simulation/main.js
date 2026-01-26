@@ -560,17 +560,43 @@ export class MuJoCoDemo {
         for (let substep = 0; substep < this.decimation; substep++) {
           if (this.control_type === 'joint_position') {
             if (isMultiRobot) {
-              // 多机器人模式：应用到所有机器人 (v7.0.7: 使用各自的actionTarget，添加检查)
+              // 多机器人模式：应用到所有机器人 (v7.0.8: 修复控制应用逻辑)
               for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
                 const mapping = this.robotJointMappings[robotIdx];
-                if (!mapping) continue;
+                if (!mapping) {
+                  if (substep === 0 && robotIdx > 0) {
+                    console.warn(`Mapping not found for robot ${robotIdx + 1}`);
+                  }
+                  continue;
+                }
                 
                 const actionTarget = actionTargets[robotIdx];
-                if (!actionTarget || !Array.isArray(actionTarget)) {
-                  // v7.0.7: 如果actionTarget不存在，跳过这个机器人（避免应用全0控制）
+                if (!actionTarget) {
+                  // v7.0.8: 如果actionTarget不存在，记录详细错误信息
                   if (substep === 0 && robotIdx > 0) {
-                    // 只在第一次substep时警告，避免日志过多
-                    console.warn(`ActionTarget not found for robot ${robotIdx + 1}, skipping control application`);
+                    console.error(`ActionTarget not found for robot ${robotIdx + 1}:`, {
+                      actionTargetsLength: actionTargets.length,
+                      actionTargetsKeys: Object.keys(actionTargets),
+                      robotIdx
+                    });
+                  }
+                  continue;
+                }
+                
+                // v7.0.8: 检查actionTarget是否为有效数组（包括Float32Array）
+                if (!Array.isArray(actionTarget) && !(actionTarget instanceof Float32Array)) {
+                  if (substep === 0 && robotIdx > 0) {
+                    console.error(`ActionTarget for robot ${robotIdx + 1} is not an array:`, typeof actionTarget, actionTarget);
+                  }
+                  continue;
+                }
+                
+                if (actionTarget.length !== mapping.numActions) {
+                  if (substep === 0 && robotIdx > 0) {
+                    console.error(`ActionTarget length mismatch for robot ${robotIdx + 1}:`, {
+                      actionTargetLength: actionTarget.length,
+                      numActions: mapping.numActions
+                    });
                   }
                   continue;
                 }
@@ -580,7 +606,8 @@ export class MuJoCoDemo {
                   const qvelAdr = mapping.qvel_adr_policy[i];
                   const ctrlAdr = mapping.ctrl_adr_policy[i];
                   
-                  const targetJpos = actionTarget[i] ?? 0.0;
+                  // v7.0.8: 确保actionTarget[i]是有效数字
+                  const targetJpos = (actionTarget[i] !== undefined && actionTarget[i] !== null) ? actionTarget[i] : 0.0;
                   const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
                   const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
                   const torque = kp * (targetJpos - this.simulation.qpos[qposAdr]) 
