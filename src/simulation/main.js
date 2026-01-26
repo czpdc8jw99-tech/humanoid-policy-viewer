@@ -280,28 +280,24 @@ export class MuJoCoDemo {
         return;
       }
       
-      // 查找对应的freejoint
+      // 查找对应的freejoint (v7.0.5: 不检查类型，直接使用pelvis body的第一个joint)
       // freejoint的body ID应该等于pelvis body ID
       for (let j = 0; j < this.model.njnt; j++) {
         if (this.model.jnt_bodyid[j] === pelvisBodyId) {
-          const jntType = this.model.jnt_type[j];
-          // MuJoCo中freejoint的类型是7 (MJ_JOINT_FREE)
-          if (jntType === 7) {
-            const qposAdr = this.model.jnt_qposadr[j];
-            if (qposAdr >= 0 && qposAdr + 6 < qpos.length) {
-              // 设置位置 (x, y, z)
-              qpos[qposAdr + 0] = config.x;
-              qpos[qposAdr + 1] = config.y;
-              qpos[qposAdr + 2] = config.z;
-              // 设置四元数 (w, x, y, z) - 默认直立姿态
-              qpos[qposAdr + 3] = 1.0; // w
-              qpos[qposAdr + 4] = 0.0; // x
-              qpos[qposAdr + 5] = 0.0; // y
-              qpos[qposAdr + 6] = 0.0; // z
-              
-              console.log(`Set robot ${index + 1} (${robotPrefix}) initial position: (${config.x}, ${config.y}, ${config.z})`);
-              break;
-            }
+          const qposAdr = this.model.jnt_qposadr[j];
+          if (qposAdr >= 0 && qposAdr + 6 < qpos.length) {
+            // 设置位置 (x, y, z)
+            qpos[qposAdr + 0] = config.x;
+            qpos[qposAdr + 1] = config.y;
+            qpos[qposAdr + 2] = config.z;
+            // 设置四元数 (w, x, y, z) - 默认直立姿态
+            qpos[qposAdr + 3] = 1.0; // w
+            qpos[qposAdr + 4] = 0.0; // x
+            qpos[qposAdr + 5] = 0.0; // y
+            qpos[qposAdr + 6] = 0.0; // z
+            
+            console.log(`Set robot ${index + 1} (${robotPrefix}) initial position: (${config.x}, ${config.y}, ${config.z})`);
+            break;
           }
         }
       }
