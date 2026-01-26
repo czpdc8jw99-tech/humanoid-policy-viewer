@@ -507,6 +507,21 @@ export class MuJoCoDemo {
       ? (this.policyRunners && this.policyRunners.length > 0)
       : this.policyRunner;
     
+    // v7.1.2: 添加基础日志确认模式
+    if (isMultiRobot) {
+      console.log(`[DEBUG] Multi-robot mode:`, {
+        robotJointMappingsLength: this.robotJointMappings?.length,
+        policyRunnersLength: this.policyRunners?.length,
+        isMultiRobot: true
+      });
+    } else {
+      console.log(`[DEBUG] Single-robot mode:`, {
+        robotJointMappingsLength: this.robotJointMappings?.length,
+        hasPolicyRunner: !!this.policyRunner,
+        isMultiRobot: false
+      });
+    }
+    
     if (!hasPolicyRunner) {
       return;
     }
