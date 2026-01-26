@@ -571,6 +571,8 @@ export default {
       try {
         const mujoco = await loadMujoco();
         this.demo = new MuJoCoDemo(mujoco);
+        // v7.0.4: 暴露demo对象到window，方便控制台调试
+        window.demo = this.demo;
         // v6.1.2: 始终关闭 follow
         this.demo.setFollowEnabled?.(false);
         await this.demo.init();

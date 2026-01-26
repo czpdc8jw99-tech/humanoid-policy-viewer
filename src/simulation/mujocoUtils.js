@@ -662,25 +662,31 @@ function configureJointMappingsWithPrefix(demo, jointNames, prefix, robotIndex) 
   
   mapping.numActions = prefixedJointNames.length;
   
-  // 查找该机器人的freejoint地址 (v7.0.2)
-  const robotPrefix = robotIndex === 0 ? 'pelvis' : `robot${robotIndex + 1}_pelvis`;
-  const textDecoder = new TextDecoder();
-  const namesArray = new Uint8Array(model.names);
-  
-  // 查找pelvis body的ID
+  // 查找该机器人的freejoint地址 (v7.0.4: 使用已记录的robotPelvisBodyIds)
   let pelvisBodyId = -1;
-  for (let b = 0; b < model.nbody; b++) {
-    let start_idx = model.name_bodyadr[b];
-    let end_idx = start_idx;
-    while (end_idx < namesArray.length && namesArray[end_idx] !== 0) {
-      end_idx++;
-    }
-    let name_buffer = namesArray.subarray(start_idx, end_idx);
-    const bodyName = textDecoder.decode(name_buffer);
+  
+  // 优先使用已记录的robotPelvisBodyIds（在setMultiRobotInitialPositions中已查找）
+  if (demo.robotPelvisBodyIds && demo.robotPelvisBodyIds[robotIndex] !== undefined) {
+    pelvisBodyId = demo.robotPelvisBodyIds[robotIndex];
+  } else {
+    // 如果robotPelvisBodyIds不存在，回退到重新查找
+    const robotPrefix = robotIndex === 0 ? 'pelvis' : `robot${robotIndex + 1}_pelvis`;
+    const textDecoder = new TextDecoder();
+    const namesArray = new Uint8Array(model.names);
     
-    if (bodyName === robotPrefix) {
-      pelvisBodyId = b;
-      break;
+    for (let b = 0; b < model.nbody; b++) {
+      let start_idx = model.name_bodyadr[b];
+      let end_idx = start_idx;
+      while (end_idx < namesArray.length && namesArray[end_idx] !== 0) {
+        end_idx++;
+      }
+      let name_buffer = namesArray.subarray(start_idx, end_idx);
+      const bodyName = textDecoder.decode(name_buffer);
+      
+      if (bodyName === robotPrefix) {
+        pelvisBodyId = b;
+        break;
+      }
     }
   }
   
