@@ -153,9 +153,7 @@ export async function reloadPolicy(policy_path, options = {}) {
     throw new Error('Policy configuration must include a non-empty policy_joint_names list');
   }
 
-  // 检测多机器人模式 (v7.0.0)
-  const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
-  
+  // 检测多机器人模式 (v7.0.0) - 使用之前已声明的isMultiRobot变量
   if (isMultiRobot) {
     // 多机器人模式：为每个机器人建立映射
     this.robotJointMappings = [];
@@ -199,9 +197,7 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.simulation.resetData();
   this.simulation.forward();
   
-  // 检测多机器人模式 (v7.0.4)
-  const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
-  
+  // 检测多机器人模式 (v7.0.4) - 使用之前已声明的isMultiRobot变量
   if (isMultiRobot) {
     // 多机器人模式：为每个机器人创建独立的policyRunner
     // 清理旧的policyRunners（如果有）
