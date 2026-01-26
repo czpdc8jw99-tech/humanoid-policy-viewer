@@ -754,11 +754,26 @@ export class MuJoCoDemo {
       jointVel[i] = qvel[mapping.qvel_adr_policy[i]];
     }
     
-    // 读取根状态（简化版：暂时使用qpos[0-6]，后续可优化为使用正确的freejoint地址）
-    // TODO: 后续需要根据freejoint地址正确读取根状态
-    const rootPos = new Float32Array([qpos[0], qpos[1], qpos[2]]);
-    const rootQuat = new Float32Array([qpos[3], qpos[4], qpos[5], qpos[6]]);
-    const rootAngVel = new Float32Array([qvel[3], qvel[4], qvel[5]]);
+    // 读取根状态（v7.0.2: 使用映射中存储的freejoint地址）
+    const freejointQposAdr = mapping.freejoint_qpos_adr ?? 0;
+    const freejointQvelAdr = mapping.freejoint_qvel_adr ?? 0;
+    
+    const rootPos = new Float32Array([
+      qpos[freejointQposAdr + 0],
+      qpos[freejointQposAdr + 1],
+      qpos[freejointQposAdr + 2]
+    ]);
+    const rootQuat = new Float32Array([
+      qpos[freejointQposAdr + 3],
+      qpos[freejointQposAdr + 4],
+      qpos[freejointQposAdr + 5],
+      qpos[freejointQposAdr + 6]
+    ]);
+    const rootAngVel = new Float32Array([
+      qvel[freejointQvelAdr + 0],
+      qvel[freejointQvelAdr + 1],
+      qvel[freejointQvelAdr + 2]
+    ]);
     
     return {
       jointPos,

@@ -609,13 +609,62 @@ function configureJointMappingsWithPrefix(demo, jointNames, prefix, robotIndex) 
   
   mapping.numActions = prefixedJointNames.length;
   
+  // 查找该机器人的freejoint地址 (v7.0.2)
+  const robotPrefix = robotIndex === 0 ? 'pelvis' : `robot${robotIndex + 1}_pelvis`;
+  const textDecoder = new TextDecoder();
+  const namesArray = new Uint8Array(model.names);
+  
+  // 查找pelvis body的ID
+  let pelvisBodyId = -1;
+  for (let b = 0; b < model.nbody; b++) {
+    let start_idx = model.name_bodyadr[b];
+    let end_idx = start_idx;
+    while (end_idx < namesArray.length && namesArray[end_idx] !== 0) {
+      end_idx++;
+    }
+    let name_buffer = namesArray.subarray(start_idx, end_idx);
+    const bodyName = textDecoder.decode(name_buffer);
+    
+    if (bodyName === robotPrefix) {
+      pelvisBodyId = b;
+      break;
+    }
+  }
+  
+  // 查找对应的freejoint
+  if (pelvisBodyId >= 0) {
+    for (let j = 0; j < model.njnt; j++) {
+      if (model.jnt_bodyid[j] === pelvisBodyId) {
+        const jntType = model.jnt_type[j];
+        // MuJoCo中freejoint的类型是7 (MJ_JOINT_FREE)
+        if (jntType === 7) {
+          const qposAdr = model.jnt_qposadr[j];
+          const qvelAdr = model.jnt_dofadr[j];
+          if (qposAdr >= 0) {
+            // 存储freejoint地址到映射中
+            mapping.freejoint_qpos_adr = qposAdr;
+            mapping.freejoint_qvel_adr = qvelAdr;
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  // 如果没有找到freejoint，使用默认值（第一个机器人的地址）
+  if (mapping.freejoint_qpos_adr === undefined) {
+    console.warn(`Could not find freejoint for robot ${robotIndex + 1}, using default (0-6)`);
+    mapping.freejoint_qpos_adr = 0;
+    mapping.freejoint_qvel_adr = 0;
+  }
+  
   // 存储到robotJointMappings数组
   if (!demo.robotJointMappings) {
     demo.robotJointMappings = [];
   }
   demo.robotJointMappings[robotIndex] = mapping;
   
-  console.log(`Configured joint mappings for robot ${robotIndex + 1} (prefix: "${prefix}")`);
+  console.log(`Configured joint mappings for robot ${robotIndex + 1} (prefix: "${prefix}"), freejoint qpos_adr: ${mapping.freejoint_qpos_adr}`);
 }
 
 export async function downloadExampleScenesFolder(mujoco) {
