@@ -531,7 +531,8 @@ export class MuJoCoDemo {
                 continue;
               }
               const actionTarget = await this.policyRunners[robotIdx].step(state);
-              if (!actionTarget || !Array.isArray(actionTarget) || actionTarget.length === 0) {
+              // v7.0.8: 检查actionTarget是否为有效数组（包括Float32Array）
+              if (!actionTarget || (!Array.isArray(actionTarget) && !(actionTarget instanceof Float32Array)) || actionTarget.length === 0) {
                 console.error(`Policy runner ${robotIdx + 1} returned invalid actionTarget:`, actionTarget);
                 continue;
               }
