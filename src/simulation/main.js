@@ -515,7 +515,7 @@ export class MuJoCoDemo {
       const loopStart = performance.now();
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
-        // 状态读取和推理 (v7.0.7: 每个机器人使用独立的policyRunner，添加actionTarget检查)
+        // 状态读取和推理 (v7.0.9: 每个机器人使用独立的policyRunner，添加详细日志)
         let actionTargets = [];
         if (isMultiRobot) {
           // 多机器人模式：为每个机器人独立推理
@@ -531,12 +531,34 @@ export class MuJoCoDemo {
                 continue;
               }
               const actionTarget = await this.policyRunners[robotIdx].step(state);
-              // v7.0.8: 检查actionTarget是否为有效数组（包括Float32Array）
+              // v7.0.9: 检查actionTarget是否为有效数组（包括Float32Array）
               if (!actionTarget || (!Array.isArray(actionTarget) && !(actionTarget instanceof Float32Array)) || actionTarget.length === 0) {
-                console.error(`Policy runner ${robotIdx + 1} returned invalid actionTarget:`, actionTarget);
+                console.error(`Policy runner ${robotIdx + 1} returned invalid actionTarget:`, {
+                  actionTarget,
+                  type: typeof actionTarget,
+                  isArray: Array.isArray(actionTarget),
+                  isFloat32Array: actionTarget instanceof Float32Array,
+                  length: actionTarget?.length
+                });
                 continue;
               }
               actionTargets[robotIdx] = actionTarget;
+              // v7.0.9: 添加调试日志（仅对第二个机器人，且只在第一次）
+              if (robotIdx === 1 && actionTargets.length === 2) {
+                console.log(`[DEBUG] actionTargets[1] assigned:`, {
+                  type: actionTarget.constructor.name,
+                  length: actionTarget.length,
+                  first5: Array.from(actionTarget).slice(0, 5)
+                });
+              }
+            }
+            // v7.0.9: 验证actionTargets数组
+            if (actionTargets.length !== this.robotJointMappings.length) {
+              console.warn(`[DEBUG] actionTargets length mismatch:`, {
+                actionTargetsLength: actionTargets.length,
+                mappingsLength: this.robotJointMappings.length,
+                actionTargetsKeys: Object.keys(actionTargets)
+              });
             }
             // 保持向后兼容：第一个机器人的actionTarget也保存到this.actionTarget
             this.actionTarget = actionTargets[0];
@@ -561,40 +583,57 @@ export class MuJoCoDemo {
         for (let substep = 0; substep < this.decimation; substep++) {
           if (this.control_type === 'joint_position') {
             if (isMultiRobot) {
-              // 多机器人模式：应用到所有机器人 (v7.0.8: 修复控制应用逻辑)
+              // 多机器人模式：应用到所有机器人 (v7.0.9: 添加详细调试日志)
               for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
                 const mapping = this.robotJointMappings[robotIdx];
                 if (!mapping) {
                   if (substep === 0 && robotIdx > 0) {
-                    console.warn(`Mapping not found for robot ${robotIdx + 1}`);
+                    console.warn(`[DEBUG] Mapping not found for robot ${robotIdx + 1}`);
                   }
                   continue;
                 }
                 
                 const actionTarget = actionTargets[robotIdx];
+                // v7.0.9: 添加详细调试日志（仅对第二个机器人，且只在第一次substep）
+                if (robotIdx === 1 && substep === 0) {
+                  console.log(`[DEBUG] Robot 1 control application:`, {
+                    actionTargetExists: !!actionTarget,
+                    actionTargetType: actionTarget ? actionTarget.constructor.name : 'undefined',
+                    actionTargetLength: actionTarget?.length,
+                    actionTargetsLength: actionTargets.length,
+                    actionTargetsKeys: Object.keys(actionTargets),
+                    actionTargetsHas1: 1 in actionTargets
+                  });
+                }
+                
                 if (!actionTarget) {
-                  // v7.0.8: 如果actionTarget不存在，记录详细错误信息
+                  // v7.0.9: 如果actionTarget不存在，记录详细错误信息
                   if (substep === 0 && robotIdx > 0) {
-                    console.error(`ActionTarget not found for robot ${robotIdx + 1}:`, {
+                    console.error(`[DEBUG] ActionTarget not found for robot ${robotIdx + 1}:`, {
                       actionTargetsLength: actionTargets.length,
                       actionTargetsKeys: Object.keys(actionTargets),
+                      actionTargetsHasIndex: robotIdx in actionTargets,
                       robotIdx
                     });
                   }
                   continue;
                 }
                 
-                // v7.0.8: 检查actionTarget是否为有效数组（包括Float32Array）
+                // v7.0.9: 检查actionTarget是否为有效数组（包括Float32Array）
                 if (!Array.isArray(actionTarget) && !(actionTarget instanceof Float32Array)) {
                   if (substep === 0 && robotIdx > 0) {
-                    console.error(`ActionTarget for robot ${robotIdx + 1} is not an array:`, typeof actionTarget, actionTarget);
+                    console.error(`[DEBUG] ActionTarget for robot ${robotIdx + 1} is not an array:`, {
+                      type: typeof actionTarget,
+                      constructor: actionTarget?.constructor?.name,
+                      value: actionTarget
+                    });
                   }
                   continue;
                 }
                 
                 if (actionTarget.length !== mapping.numActions) {
                   if (substep === 0 && robotIdx > 0) {
-                    console.error(`ActionTarget length mismatch for robot ${robotIdx + 1}:`, {
+                    console.error(`[DEBUG] ActionTarget length mismatch for robot ${robotIdx + 1}:`, {
                       actionTargetLength: actionTarget.length,
                       numActions: mapping.numActions
                     });
@@ -602,12 +641,30 @@ export class MuJoCoDemo {
                   continue;
                 }
                 
+                // v7.0.9: 添加控制应用调试日志（仅对第二个机器人，且只在第一次substep和第一个关节）
+                if (robotIdx === 1 && substep === 0) {
+                  const firstCtrlAdr = mapping.ctrl_adr_policy[0];
+                  const firstTargetJpos = actionTarget[0];
+                  const firstQpos = this.simulation.qpos[mapping.qpos_adr_policy[0]];
+                  const firstKp = this.kpPolicy ? this.kpPolicy[0] : 0.0;
+                  const firstKd = this.kdPolicy ? this.kdPolicy[0] : 0.0;
+                  const firstTorque = firstKp * (firstTargetJpos - firstQpos) + firstKd * (0 - this.simulation.qvel[mapping.qvel_adr_policy[0]]);
+                  console.log(`[DEBUG] Robot 1 first joint control:`, {
+                    ctrlAdr: firstCtrlAdr,
+                    targetJpos: firstTargetJpos,
+                    qpos: firstQpos,
+                    kp: firstKp,
+                    kd: firstKd,
+                    torque: firstTorque
+                  });
+                }
+                
                 for (let i = 0; i < mapping.numActions; i++) {
                   const qposAdr = mapping.qpos_adr_policy[i];
                   const qvelAdr = mapping.qvel_adr_policy[i];
                   const ctrlAdr = mapping.ctrl_adr_policy[i];
                   
-                  // v7.0.8: 确保actionTarget[i]是有效数字
+                  // v7.0.9: 确保actionTarget[i]是有效数字
                   const targetJpos = (actionTarget[i] !== undefined && actionTarget[i] !== null) ? actionTarget[i] : 0.0;
                   const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
                   const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
