@@ -690,21 +690,17 @@ function configureJointMappingsWithPrefix(demo, jointNames, prefix, robotIndex) 
     }
   }
   
-  // 查找对应的freejoint
+  // 查找对应的freejoint (v7.0.5: 不检查类型，直接使用pelvis body的第一个joint)
   if (pelvisBodyId >= 0) {
     for (let j = 0; j < model.njnt; j++) {
       if (model.jnt_bodyid[j] === pelvisBodyId) {
-        const jntType = model.jnt_type[j];
-        // MuJoCo中freejoint的类型是7 (MJ_JOINT_FREE)
-        if (jntType === 7) {
-          const qposAdr = model.jnt_qposadr[j];
-          const qvelAdr = model.jnt_dofadr[j];
-          if (qposAdr >= 0) {
-            // 存储freejoint地址到映射中
-            mapping.freejoint_qpos_adr = qposAdr;
-            mapping.freejoint_qvel_adr = qvelAdr;
-            break;
-          }
+        const qposAdr = model.jnt_qposadr[j];
+        const qvelAdr = model.jnt_dofadr[j];
+        if (qposAdr >= 0) {
+          // 存储freejoint地址到映射中（pelvis body通常只有一个joint，就是freejoint）
+          mapping.freejoint_qpos_adr = qposAdr;
+          mapping.freejoint_qvel_adr = qvelAdr;
+          break;
         }
       }
     }
