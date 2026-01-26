@@ -508,13 +508,13 @@ export class MuJoCoDemo {
       return;
     }
 
-    // 检测是否是多机器人模式 (v7.0.0)
-    const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
-
     while (this.alive) {
       const loopStart = performance.now();
 
       if (!this.params.paused && this.model && this.data && this.simulation && this.policyRunner) {
+        // 检测是否是多机器人模式 (v7.0.1: 每次循环都重新检测)
+        const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
+        
         // 状态读取和推理（两种模式共用）(v7.0.0)
         let state;
         if (isMultiRobot) {
