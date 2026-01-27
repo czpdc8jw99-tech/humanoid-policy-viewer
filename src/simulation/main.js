@@ -212,8 +212,8 @@ export class MuJoCoDemo {
       throw new Error('Robot configs cannot be empty');
     }
     
-    if (robotConfigs.length > 10) {
-      throw new Error('Maximum 10 robots allowed');
+    if (robotConfigs.length > 11) {
+      throw new Error('Maximum 11 robots allowed');
     }
     
     this.robotConfigs = robotConfigs;
