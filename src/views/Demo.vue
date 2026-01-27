@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.5</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.6</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -1119,8 +1119,27 @@ export default {
         return;
       }
       this.demo.resetSimulation();
+
+      // v8.0.6: Reset 时清空错误提示，并把 motion 回到 default（UI与仿真状态一致）
+      this.policyLoadError = '';
+      this.motionUploadMessage = '';
+      this.motionUploadType = 'success';
+      this.robotPolicyErrors = (this.robotPolicyErrors || []).map(() => '');
+      this.robotMotionErrors = (this.robotMotionErrors || []).map(() => '');
+
+      if (Array.isArray(this.robotConfigs)) {
+        for (const cfg of this.robotConfigs) {
+          if (cfg) cfg.motion = 'default';
+        }
+      }
+      if (Array.isArray(this.robotConfigsDraft)) {
+        for (const cfg of this.robotConfigsDraft) {
+          if (cfg) cfg.motion = 'default';
+        }
+      }
+
       this.availableMotions = this.getAvailableMotions();
-      this.currentMotion = this.demo.params.current_motion ?? this.availableMotions[0] ?? null;
+      this.currentMotion = 'default';
       this.updateTrackingState();
     },
     backToDefault() {
