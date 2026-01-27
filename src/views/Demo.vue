@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.2</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.3</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -209,7 +209,7 @@
               </v-expansion-panel-title>
               <v-expansion-panel-text>
                 <v-text-field
-                  v-model.number="robotCount"
+                  v-model.number="robotCountDraft"
                   type="number"
                   label="机器人数量（待应用）"
                   min="1"
@@ -217,16 +217,19 @@
                   density="compact"
                   hide-details
                   class="mb-2"
-                  @update:modelValue="onRobotCountChange"
+                  @update:modelValue="onRobotCountDraftChange"
                 ></v-text-field>
 
                 <div class="text-caption mb-2">
-                  当前场景机器人数量：{{ robotConfigs.length }}；待应用数量：{{ robotCount }}
+                  当前场景机器人数量：{{ robotConfigs.length }}；待应用数量：{{ robotCountDraft }}
                 </div>
                 
-                <div v-for="(robot, index) in robotConfigs" :key="index" class="mb-3">
+                <div v-for="(robot, index) in robotConfigsDraft" :key="index" class="mb-3">
                   <v-card variant="outlined" density="compact">
-                    <v-card-title class="text-caption">机器人 {{ index + 1 }}</v-card-title>
+                    <v-card-title class="text-caption">
+                      机器人 {{ index + 1 }}
+                      <span v-if="index >= robotConfigs.length" class="text-caption" style="opacity: 0.75;">（待生成）</span>
+                    </v-card-title>
                     <v-card-text class="py-2">
                       <v-row dense>
                         <v-col cols="6">
@@ -271,13 +274,14 @@
                           <div class="text-caption" v-else>
                             当前：{{ (robot.policyPath || '').split('/').pop() || '—' }}
                             <span v-if="robotPolicyLoading[index]">（加载中…）</span>
+                            <span v-if="index >= robotConfigs.length">（生成后生效）</span>
                           </div>
                         </v-col>
 
                         <v-col cols="12" class="mt-2">
                           <v-select
                             v-model="robot.motion"
-                            :items="getRobotMotionItems(index)"
+                            :items="getRobotMotionItemsDraft(index)"
                             label="动作（每个机器人可不同）"
                             density="compact"
                             hide-details
@@ -290,6 +294,7 @@
                           <div class="text-caption" v-else>
                             当前：{{ getRobotTrackingState(index).currentName || '—' }}
                             <span v-if="!getRobotTrackingState(index).currentDone">（播放中…）</span>
+                            <span v-if="index >= robotConfigs.length">（生成后生效）</span>
                           </div>
                         </v-col>
 
@@ -380,7 +385,7 @@
             label="选择机器人"
             density="compact"
             hide-details
-            :disabled="state !== 1 || robotCount < 1"
+            :disabled="state !== 1 || robotConfigs.length < 1"
           ></v-select>
           <v-btn
             size="small"
@@ -496,7 +501,8 @@ export default {
     showSafariAlert: true,
     resize_listener: null,
     // 多机器人配置 - v4.0
-    robotCount: 1,
+    // v8.0.3: 草稿(draft)数量，仅用于编辑，按“生成场景”才应用
+    robotCountDraft: 1,
     // v7.2.1: 扩展 robotConfigs，为独立策略做准备
     // - policyPath: 每个机器人的策略文件路径（默认跟随当前选择的策略）
     // - motion: 每个机器人的当前 motion（默认 'default'）
@@ -506,6 +512,13 @@ export default {
       policyPath: './examples/checkpoints/g1/tracking_policy_amass.json',
       motion: 'default'
     }], // Z固定为0.8，不显示
+    // v8.0.3: 草稿(draft)配置列表（可先填位置/策略/动作）
+    robotConfigsDraft: [{
+      x: 0,
+      y: 0,
+      policyPath: './examples/checkpoints/g1/tracking_policy_amass.json',
+      motion: 'default'
+    }],
     isGeneratingRobots: false,
     // v7.2.2: 每个机器人的策略加载状态/错误（UI可见反馈）
     robotPolicyLoading: [false],
@@ -654,6 +667,32 @@ export default {
     }
   },
   methods: {
+    // v8.0.3: 确保草稿配置长度与草稿数量一致
+    ensureDraftLength() {
+      const desired = Math.max(1, Math.min(11, this.robotCountDraft || 1));
+      if (!Array.isArray(this.robotConfigsDraft)) {
+        this.robotConfigsDraft = [];
+      }
+      const next = this.robotConfigsDraft.slice(0, desired).map((c) => ({
+        x: c?.x ?? 0,
+        y: c?.y ?? 0,
+        policyPath: c?.policyPath || this.getSelectedPolicyPath(),
+        motion: c?.motion || 'default'
+      }));
+      while (next.length < desired) {
+        next.push({
+          x: 0,
+          y: 0,
+          policyPath: this.getSelectedPolicyPath(),
+          motion: 'default'
+        });
+      }
+      this.robotConfigsDraft = next;
+      // 同步 UI 状态数组长度（加载/错误）
+      this.robotPolicyLoading = Array.from({ length: desired }, (_, i) => this.robotPolicyLoading?.[i] ?? false);
+      this.robotPolicyErrors = Array.from({ length: desired }, (_, i) => this.robotPolicyErrors?.[i] ?? '');
+      this.robotMotionErrors = Array.from({ length: desired }, (_, i) => this.robotMotionErrors?.[i] ?? '');
+    },
     // v7.2.1: 根据当前策略选项获取 policyPath（用于 robotConfigs 默认值/补全）
     getSelectedPolicyPath() {
       const selected = this.policies?.find((p) => p.value === this.currentPolicy);
@@ -661,9 +700,9 @@ export default {
     },
     // v7.2.2: 选择某个机器人的策略（仅重载该机器人）
     async onRobotPolicyChange(robotIndex, policyPath) {
-      // 先更新本地配置（即使 demo 还没初始化，也能保存 UI 状态）
-      if (this.robotConfigs && this.robotConfigs[robotIndex]) {
-        this.robotConfigs[robotIndex].policyPath = policyPath;
+      // 更新草稿配置
+      if (this.robotConfigsDraft && this.robotConfigsDraft[robotIndex]) {
+        this.robotConfigsDraft[robotIndex].policyPath = policyPath;
       }
 
       if (!this.demo || typeof this.demo.reloadPolicyForRobot !== 'function') {
@@ -673,6 +712,10 @@ export default {
       // 多机器人场景未生成或 runner 未就绪时，先不触发重载
       const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
       if (!isMultiRobot) {
+        return;
+      }
+      // 仅对“已生成”的机器人即时生效
+      if (robotIndex >= (this.robotConfigs?.length || 0)) {
         return;
       }
 
@@ -688,7 +731,11 @@ export default {
         });
         // 策略切换后，为避免 motion 列表不一致导致困惑，先回到 default
         if (this.robotConfigs?.[robotIndex]) {
+          this.robotConfigs[robotIndex].policyPath = policyPath;
           this.robotConfigs[robotIndex].motion = 'default';
+        }
+        if (this.robotConfigsDraft?.[robotIndex]) {
+          this.robotConfigsDraft[robotIndex].motion = 'default';
         }
         this.robotMotionErrors[robotIndex] = '';
         this.updateTrackingState();
@@ -707,12 +754,15 @@ export default {
       if (!motionName) {
         return;
       }
-      if (this.robotConfigs?.[robotIndex]) {
-        this.robotConfigs[robotIndex].motion = motionName;
+      if (this.robotConfigsDraft?.[robotIndex]) {
+        this.robotConfigsDraft[robotIndex].motion = motionName;
       }
       this.robotMotionErrors[robotIndex] = '';
 
       if (!this.demo || !Array.isArray(this.demo.policyRunners) || !this.demo.policyRunners[robotIndex]) {
+        return;
+      }
+      if (robotIndex >= (this.robotConfigs?.length || 0)) {
         return;
       }
       const tracking = this.demo.policyRunners[robotIndex]?.tracking ?? null;
@@ -729,6 +779,9 @@ export default {
         } else {
           this.robotMotionErrors[robotIndex] = '动作切换被拒绝（动作名不存在或不允许切换）';
         }
+      }
+      if (this.robotConfigs?.[robotIndex]) {
+        this.robotConfigs[robotIndex].motion = motionName;
       }
       this.updateTrackingState();
     },
@@ -912,9 +965,9 @@ export default {
       }
     },
     // 多机器人配置方法 - v6.1.1: 使用用户输入的位置
-    onRobotCountChange() {
-      // v8.0.2: 仅更新“待应用数量”，不立即改 robotConfigs（避免运行中改数字导致频率波动）
-      this.robotCount = Math.max(1, Math.min(11, this.robotCount || 1));
+    onRobotCountDraftChange() {
+      this.robotCountDraft = Math.max(1, Math.min(11, this.robotCountDraft || 1));
+      this.ensureDraftLength();
     },
     // 验证并修正坐标值 - v4.1.3
     validateCoordinate(axis, robotIndex, robot) {
@@ -959,27 +1012,15 @@ export default {
       
       this.isGeneratingRobots = true;
       try {
-        // v8.0.2: 点击按钮时才应用“待应用数量”，并据此生成场景
-        const desiredCount = Math.max(1, Math.min(11, this.robotCount || 1));
-        const nextConfigs = (this.robotConfigs || []).slice(0, desiredCount).map((c) => ({
+        // v8.0.3: 应用草稿配置（数量/位置/策略/动作）
+        const desiredCount = Math.max(1, Math.min(11, this.robotCountDraft || 1));
+        this.ensureDraftLength();
+        const nextConfigs = (this.robotConfigsDraft || []).slice(0, desiredCount).map((c) => ({
           x: c?.x ?? 0,
           y: c?.y ?? 0,
           policyPath: c?.policyPath || this.getSelectedPolicyPath(),
           motion: c?.motion || 'default'
         }));
-        while (nextConfigs.length < desiredCount) {
-          nextConfigs.push({
-            x: 0,
-            y: 0,
-            policyPath: this.getSelectedPolicyPath(),
-            motion: 'default'
-          });
-        }
-
-        // 同步 UI 状态数组长度（加载/错误）
-        this.robotPolicyLoading = Array.from({ length: desiredCount }, (_, i) => this.robotPolicyLoading?.[i] ?? false);
-        this.robotPolicyErrors = Array.from({ length: desiredCount }, (_, i) => this.robotPolicyErrors?.[i] ?? '');
-        this.robotMotionErrors = Array.from({ length: desiredCount }, (_, i) => this.robotMotionErrors?.[i] ?? '');
 
         // v6.1.1: 使用用户输入的位置，只添加Z坐标
         const configsWithZ = nextConfigs.map((config) => ({
@@ -999,9 +1040,10 @@ export default {
         if (configsWithZ.length > 1) {
           this.demo.setMultiRobotInitialPositions();
         }
-        // v8.0.2: 场景生成成功后才同步“已应用配置”
+        // v8.0.3: 场景生成成功后才同步“已应用配置”，并把草稿与已应用对齐
         this.robotConfigs = nextConfigs;
-        this.robotCount = desiredCount;
+        this.robotConfigsDraft = nextConfigs.map((c) => ({ ...c }));
+        this.robotCountDraft = desiredCount;
         // v6.1.0: 确保selectedRobotIndex在有效范围内
         if (this.selectedRobotIndex >= desiredCount) {
           this.selectedRobotIndex = 0;
@@ -1194,6 +1236,26 @@ export default {
         disabled: name !== 'default' && !canSwitchNonDefault
       }));
     },
+    // v8.0.3: 草稿机器人 motion 列表（未生成的机器人使用全局 motion 列表作为参考）
+    getRobotMotionItemsDraft(robotIndex) {
+      const appliedCount = this.robotConfigs?.length || 0;
+      if (robotIndex < appliedCount) {
+        return this.getRobotMotionItems(robotIndex);
+      }
+      const names = (this.availableMotions && this.availableMotions.length > 0)
+        ? this.availableMotions
+        : (this.robotAvailableMotions?.[0] ?? []);
+      const sorted = [...names].sort((a, b) => {
+        if (a === 'default') return -1;
+        if (b === 'default') return 1;
+        return a.localeCompare(b);
+      });
+      return sorted.map((name) => ({
+        title: name,
+        value: name,
+        disabled: false
+      }));
+    },
     shouldShowRobotProgress(robotIndex) {
       const state = this.getRobotTrackingState(robotIndex);
       if (!state || !state.available) return false;
@@ -1309,6 +1371,10 @@ export default {
     };
     window.addEventListener('resize', this.resize_listener);
     this.init();
+    // v8.0.3: 初始化草稿配置（与已应用配置保持一致）
+    this.robotCountDraft = this.robotConfigs?.length || 1;
+    this.robotConfigsDraft = (this.robotConfigs || []).map((c) => ({ ...c }));
+    this.ensureDraftLength();
     this.keydown_listener = (event) => {
       if (event.code === 'Backspace') {
         this.reset();
