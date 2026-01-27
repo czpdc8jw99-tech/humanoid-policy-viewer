@@ -110,6 +110,13 @@ export async function reloadPolicy(policy_path, options = {}) {
 
   // 等待所有policyRunner完成推理 (v7.0.4)
   const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
+  // v8.0.2: 若切回单机器人，清理多机残留状态（否则会出现 configs=1 但 runners/mappings>1）
+  if (!isMultiRobot) {
+    this.policyRunners = [];
+    this.robotJointMappings = [];
+    this.robotPelvisBodyIds = [];
+    this.robotPolicyParams = [];
+  }
   if (isMultiRobot && this.policyRunners) {
     for (const runner of this.policyRunners) {
       while (runner?.isInferencing) {

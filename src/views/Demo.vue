@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.1</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.2</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -211,7 +211,7 @@
                 <v-text-field
                   v-model.number="robotCount"
                   type="number"
-                  label="机器人数量"
+                  label="机器人数量（待应用）"
                   min="1"
                   max="11"
                   density="compact"
@@ -219,6 +219,10 @@
                   class="mb-2"
                   @update:modelValue="onRobotCountChange"
                 ></v-text-field>
+
+                <div class="text-caption mb-2">
+                  当前场景机器人数量：{{ robotConfigs.length }}；待应用数量：{{ robotCount }}
+                </div>
                 
                 <div v-for="(robot, index) in robotConfigs" :key="index" class="mb-3">
                   <v-card variant="outlined" density="compact">
@@ -526,7 +530,8 @@ export default {
      */
     robotIndexItems() {
       const items = [];
-      const count = this.robotCount || 1;
+      // v8.0.2: 聚焦/选择应以“已生成场景”的机器人数量为准
+      const count = this.robotConfigs?.length || 1;
       for (let i = 0; i < count; i++) {
         items.push({
           title: `机器人 ${i + 1}`,
@@ -908,33 +913,8 @@ export default {
     },
     // 多机器人配置方法 - v6.1.1: 使用用户输入的位置
     onRobotCountChange() {
-      // 限制数量在1-11之间
+      // v8.0.2: 仅更新“待应用数量”，不立即改 robotConfigs（避免运行中改数字导致频率波动）
       this.robotCount = Math.max(1, Math.min(11, this.robotCount || 1));
-      
-      // 调整robotConfigs数组
-      const currentLength = this.robotConfigs.length;
-      if (this.robotCount > currentLength) {
-        // 添加新机器人，默认位置为(0, 0)
-        for (let i = currentLength; i < this.robotCount; i++) {
-          this.robotConfigs.push({
-            x: 0,
-            y: 0,
-            policyPath: this.getSelectedPolicyPath(),
-            motion: 'default'
-            // Z固定为0.8，不存储
-          });
-          this.robotPolicyLoading[i] = false;
-          this.robotPolicyErrors[i] = '';
-          this.robotMotionErrors[i] = '';
-        }
-      } else if (this.robotCount < currentLength) {
-        // 移除多余的机器人
-        this.robotConfigs = this.robotConfigs.slice(0, this.robotCount);
-        this.robotPolicyLoading = this.robotPolicyLoading.slice(0, this.robotCount);
-        this.robotPolicyErrors = this.robotPolicyErrors.slice(0, this.robotCount);
-        this.robotMotionErrors = this.robotMotionErrors.slice(0, this.robotCount);
-      }
-      // v6.1.1: 不再强制重置位置，保留用户输入的值
     },
     // 验证并修正坐标值 - v4.1.3
     validateCoordinate(axis, robotIndex, robot) {
@@ -979,8 +959,30 @@ export default {
       
       this.isGeneratingRobots = true;
       try {
+        // v8.0.2: 点击按钮时才应用“待应用数量”，并据此生成场景
+        const desiredCount = Math.max(1, Math.min(11, this.robotCount || 1));
+        const nextConfigs = (this.robotConfigs || []).slice(0, desiredCount).map((c) => ({
+          x: c?.x ?? 0,
+          y: c?.y ?? 0,
+          policyPath: c?.policyPath || this.getSelectedPolicyPath(),
+          motion: c?.motion || 'default'
+        }));
+        while (nextConfigs.length < desiredCount) {
+          nextConfigs.push({
+            x: 0,
+            y: 0,
+            policyPath: this.getSelectedPolicyPath(),
+            motion: 'default'
+          });
+        }
+
+        // 同步 UI 状态数组长度（加载/错误）
+        this.robotPolicyLoading = Array.from({ length: desiredCount }, (_, i) => this.robotPolicyLoading?.[i] ?? false);
+        this.robotPolicyErrors = Array.from({ length: desiredCount }, (_, i) => this.robotPolicyErrors?.[i] ?? '');
+        this.robotMotionErrors = Array.from({ length: desiredCount }, (_, i) => this.robotMotionErrors?.[i] ?? '');
+
         // v6.1.1: 使用用户输入的位置，只添加Z坐标
-        const configsWithZ = this.robotConfigs.map((config) => ({
+        const configsWithZ = nextConfigs.map((config) => ({
           ...config,
           x: Math.max(-20, Math.min(20, config.x || 0)), // 使用用户输入的X坐标，限制在范围内
           y: Math.max(-10, Math.min(10, config.y || 0)), // 使用用户输入的Y坐标，限制在范围内
@@ -997,8 +999,11 @@ export default {
         if (configsWithZ.length > 1) {
           this.demo.setMultiRobotInitialPositions();
         }
+        // v8.0.2: 场景生成成功后才同步“已应用配置”
+        this.robotConfigs = nextConfigs;
+        this.robotCount = desiredCount;
         // v6.1.0: 确保selectedRobotIndex在有效范围内
-        if (this.selectedRobotIndex >= configsWithZ.length) {
+        if (this.selectedRobotIndex >= desiredCount) {
           this.selectedRobotIndex = 0;
         }
         // 重新加载策略（为每个机器人）
