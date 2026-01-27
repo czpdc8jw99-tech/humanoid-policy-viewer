@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.6</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.7</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -399,6 +399,18 @@
           >
             <v-icon icon="mdi-target" class="mr-1"></v-icon>
             聚焦到机器人 {{ selectedRobotIndex + 1 }}
+          </v-btn>
+          <v-btn
+            size="small"
+            variant="outlined"
+            color="primary"
+            :disabled="state !== 1"
+            @click="focusAndFollowRobot"
+            block
+            class="mt-2"
+          >
+            <v-icon icon="mdi-crosshairs-gps" class="mr-1"></v-icon>
+            聚焦并跟随（按 WASDQE 自动解除）
           </v-btn>
         </div>
         <div class="status-legend">
@@ -966,6 +978,22 @@ export default {
       const robotIndex = this.selectedRobotIndex || 0;
       if (this.demo.focusOnRobot) {
         this.demo.focusOnRobot(robotIndex);
+      }
+    },
+    // v8.0.7: 聚焦并开启跟随；用户按 WASDQE 会自动解除跟随（在 MuJoCoDemo 键盘事件里实现）
+    focusAndFollowRobot() {
+      if (!this.demo) {
+        return;
+      }
+      const robotIndex = this.selectedRobotIndex || 0;
+      if (this.demo.focusOnRobot) {
+        this.demo.focusOnRobot(robotIndex);
+      }
+      if (typeof this.demo.setFollowRobotIndex === 'function') {
+        this.demo.setFollowRobotIndex(robotIndex);
+      }
+      if (typeof this.demo.setFollowEnabled === 'function') {
+        this.demo.setFollowEnabled(true);
       }
     },
     // 多机器人配置方法 - v6.1.1: 使用用户输入的位置

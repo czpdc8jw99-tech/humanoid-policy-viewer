@@ -101,6 +101,11 @@ export class MuJoCoDemo {
       if (['w', 'a', 's', 'd', 'q', 'e'].includes(key)) {
         e.preventDefault();
         e.stopPropagation();
+        // v8.0.7: 如果启用了跟随，用户按下任意控制键就自动解除跟随
+        // 这样用户可以立刻用 WASDQE 手动控制视角，而不需要额外开关
+        if (this.followEnabled) {
+          this.setFollowEnabled(false);
+        }
         this.keys[key] = true;
         // 调试日志
         if (key === 'w') {
