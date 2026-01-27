@@ -885,9 +885,11 @@ export class MuJoCoDemo {
       qpos[freejointQposAdr + 6]
     ]);
     const rootAngVel = new Float32Array([
-      qvel[freejointQvelAdr + 0],
-      qvel[freejointQvelAdr + 1],
-      qvel[freejointQvelAdr + 2]
+      // v8.0.1: freejoint 的 qvel 前3维是线速度，后3维才是角速度
+      // 单机器人 readPolicyState() 使用的是 qvel[3..5]，多机器人应保持一致
+      qvel[freejointQvelAdr + 3],
+      qvel[freejointQvelAdr + 4],
+      qvel[freejointQvelAdr + 5]
     ]);
     
     return {
