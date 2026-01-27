@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.2.2</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.2.3</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -263,6 +263,64 @@
                             <span v-if="robotPolicyLoading[index]">（加载中…）</span>
                           </div>
                         </v-col>
+
+                        <v-col cols="12" class="mt-2">
+                          <v-select
+                            v-model="robot.motion"
+                            :items="getRobotMotionItems(index)"
+                            label="动作（每个机器人可不同）"
+                            density="compact"
+                            hide-details
+                            :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
+                            @update:modelValue="onRobotMotionChange(index, $event)"
+                          ></v-select>
+                          <div class="text-caption" v-if="robotMotionErrors[index]" style="color: #B00020;">
+                            {{ robotMotionErrors[index] }}
+                          </div>
+                          <div class="text-caption" v-else>
+                            当前：{{ getRobotTrackingState(index).currentName || '—' }}
+                            <span v-if="!getRobotTrackingState(index).currentDone">（播放中…）</span>
+                          </div>
+                        </v-col>
+
+                        <v-col cols="12" v-if="getRobotTrackingState(index).available">
+                          <v-progress-linear
+                            v-if="shouldShowRobotProgress(index)"
+                            :model-value="getRobotProgressValue(index)"
+                            height="5"
+                            color="primary"
+                            rounded
+                            class="mt-2 motion-progress-no-animation"
+                          ></v-progress-linear>
+
+                          <v-alert
+                            v-if="showRobotBackToDefault(index)"
+                            type="info"
+                            variant="tonal"
+                            density="compact"
+                            class="mt-2"
+                          >
+                            Motion "{{ getRobotTrackingState(index).currentName }}" finished. Return to default pose before starting another clip.
+                            <v-btn
+                              color="primary"
+                              block
+                              density="compact"
+                              @click="backToDefaultForRobot(index)"
+                            >
+                              Back to default pose
+                            </v-btn>
+                          </v-alert>
+
+                          <v-alert
+                            v-else-if="showRobotMotionLockedNotice(index)"
+                            type="warning"
+                            variant="tonal"
+                            density="compact"
+                            class="mt-2"
+                          >
+                            "{{ getRobotTrackingState(index).currentName }}" is still playing. Wait until it finishes and returns to default pose before switching.
+                          </v-alert>
+                        </v-col>
                       </v-row>
                     </v-card-text>
                   </v-card>
@@ -439,8 +497,12 @@ export default {
     }], // Z固定为0.8，不显示
     isGeneratingRobots: false,
     // v7.2.2: 每个机器人的策略加载状态/错误（UI可见反馈）
-    robotPolicyLoading: [],
-    robotPolicyErrors: [],
+    robotPolicyLoading: [false],
+    robotPolicyErrors: [''],
+    // v7.2.3: 每个机器人的动作错误提示 + 每个机器人独立 tracking state
+    robotMotionErrors: [''],
+    robotTrackingStates: [],
+    robotAvailableMotions: [],
     // v6.1.0: 聚焦机器人选择
     selectedRobotIndex: 0, // 当前选择的机器人索引（0-based）
     // 坐标范围提示 - v4.1.3
@@ -606,10 +668,19 @@ export default {
       this.robotPolicyErrors[robotIndex] = '';
       this.robotPolicyLoading[robotIndex] = true;
       try {
+        const wasPaused = this.demo.params?.paused ?? false;
+        this.demo.params.paused = true;
         const selected = this.policies.find((p) => p.policyPath === policyPath) ?? null;
         await this.demo.reloadPolicyForRobot(robotIndex, policyPath, {
           onnxPath: selected?.onnxPath
         });
+        // 策略切换后，为避免 motion 列表不一致导致困惑，先回到 default
+        if (this.robotConfigs?.[robotIndex]) {
+          this.robotConfigs[robotIndex].motion = 'default';
+        }
+        this.robotMotionErrors[robotIndex] = '';
+        this.updateTrackingState();
+        this.demo.params.paused = wasPaused;
       } catch (e) {
         const msg = e?.message || e?.toString?.() || '策略加载失败';
         this.robotPolicyErrors[robotIndex] = msg;
@@ -617,6 +688,55 @@ export default {
       } finally {
         this.robotPolicyLoading[robotIndex] = false;
       }
+    },
+
+    // v7.2.3: 选择某个机器人的动作（每个机器人独立）
+    onRobotMotionChange(robotIndex, motionName) {
+      if (!motionName) {
+        return;
+      }
+      if (this.robotConfigs?.[robotIndex]) {
+        this.robotConfigs[robotIndex].motion = motionName;
+      }
+      this.robotMotionErrors[robotIndex] = '';
+
+      if (!this.demo || !Array.isArray(this.demo.policyRunners) || !this.demo.policyRunners[robotIndex]) {
+        return;
+      }
+      const tracking = this.demo.policyRunners[robotIndex]?.tracking ?? null;
+      if (!tracking) {
+        this.robotMotionErrors[robotIndex] = 'Tracking 未就绪';
+        return;
+      }
+      const state = this.demo.readPolicyStateForRobot?.(robotIndex);
+      const accepted = tracking.requestMotion(motionName, state);
+      if (!accepted) {
+        const ts = tracking.playbackState?.() ?? null;
+        if (motionName !== 'default' && ts && (!ts.isDefault || !ts.currentDone)) {
+          this.robotMotionErrors[robotIndex] = '当前动作未结束，请先回到 default';
+        } else {
+          this.robotMotionErrors[robotIndex] = '动作切换被拒绝（动作名不存在或不允许切换）';
+        }
+      }
+      this.updateTrackingState();
+    },
+
+    // v7.2.3: 回到指定机器人的 default pose
+    backToDefaultForRobot(robotIndex) {
+      if (!this.demo || !Array.isArray(this.demo.policyRunners) || !this.demo.policyRunners[robotIndex]) {
+        return;
+      }
+      const tracking = this.demo.policyRunners[robotIndex]?.tracking ?? null;
+      if (!tracking) {
+        return;
+      }
+      const state = this.demo.readPolicyStateForRobot?.(robotIndex);
+      const accepted = tracking.requestMotion('default', state);
+      if (accepted && this.robotConfigs?.[robotIndex]) {
+        this.robotConfigs[robotIndex].motion = 'default';
+      }
+      this.robotMotionErrors[robotIndex] = '';
+      this.updateTrackingState();
     },
     detectSafari() {
       const ua = navigator.userAgent;
@@ -798,12 +918,14 @@ export default {
           });
           this.robotPolicyLoading[i] = false;
           this.robotPolicyErrors[i] = '';
+          this.robotMotionErrors[i] = '';
         }
       } else if (this.robotCount < currentLength) {
         // 移除多余的机器人
         this.robotConfigs = this.robotConfigs.slice(0, this.robotCount);
         this.robotPolicyLoading = this.robotPolicyLoading.slice(0, this.robotCount);
         this.robotPolicyErrors = this.robotPolicyErrors.slice(0, this.robotCount);
+        this.robotMotionErrors = this.robotMotionErrors.slice(0, this.robotCount);
       }
       // v6.1.1: 不再强制重置位置，保留用户输入的值
     },
@@ -979,6 +1101,8 @@ export default {
           inTransition: false,
           isDefault: true
         };
+        this.robotTrackingStates = [];
+        this.robotAvailableMotions = [];
         return;
       }
       const state = tracking.playbackState();
@@ -988,6 +1112,95 @@ export default {
       if (current && this.currentMotion !== current) {
         this.currentMotion = current;
       }
+
+      // v7.2.3: 多机器人时，同步每个机器人的 tracking state + motion 列表（UI可见反馈）
+      const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
+      if (isMultiRobot) {
+        const runners = this.demo.policyRunners;
+        const states = [];
+        const motions = [];
+        for (let i = 0; i < runners.length; i++) {
+          const t = runners[i]?.tracking ?? null;
+          if (!t) {
+            states[i] = {
+              available: false,
+              currentName: 'default',
+              currentDone: true,
+              refIdx: 0,
+              refLen: 0,
+              transitionLen: 0,
+              motionLen: 0,
+              inTransition: false,
+              isDefault: true
+            };
+            motions[i] = [];
+            continue;
+          }
+          const st = t.playbackState();
+          states[i] = { ...st };
+          motions[i] = t.availableMotions();
+          // 保持 robotConfigs[i].motion 与播放状态同步（仅用于显示，不强制影响策略）
+          if (this.robotConfigs?.[i] && st?.currentName) {
+            this.robotConfigs[i].motion = st.currentName;
+          }
+        }
+        this.robotTrackingStates = states;
+        this.robotAvailableMotions = motions;
+      } else {
+        this.robotTrackingStates = [];
+        this.robotAvailableMotions = [];
+      }
+    },
+
+    // v7.2.3: 机器人级别的 tracking state / motion items / progress helpers
+    getRobotTrackingState(robotIndex) {
+      const fallback = {
+        available: false,
+        currentName: 'default',
+        currentDone: true,
+        refIdx: 0,
+        refLen: 0,
+        transitionLen: 0,
+        motionLen: 0,
+        inTransition: false,
+        isDefault: true
+      };
+      return this.robotTrackingStates?.[robotIndex] ?? fallback;
+    },
+    getRobotMotionItems(robotIndex) {
+      const names = this.robotAvailableMotions?.[robotIndex] ?? [];
+      const state = this.getRobotTrackingState(robotIndex);
+      const canSwitchNonDefault = !!state && state.isDefault && state.currentDone;
+      const sorted = [...names].sort((a, b) => {
+        if (a === 'default') return -1;
+        if (b === 'default') return 1;
+        return a.localeCompare(b);
+      });
+      return sorted.map((name) => ({
+        title: name,
+        value: name,
+        disabled: name !== 'default' && !canSwitchNonDefault
+      }));
+    },
+    shouldShowRobotProgress(robotIndex) {
+      const state = this.getRobotTrackingState(robotIndex);
+      if (!state || !state.available) return false;
+      if (state.refLen > 1) return true;
+      return !state.currentDone || !state.isDefault || state.inTransition;
+    },
+    getRobotProgressValue(robotIndex) {
+      const state = this.getRobotTrackingState(robotIndex);
+      if (!state || state.refLen <= 0) return 0;
+      const value = ((state.refIdx + 1) / state.refLen) * 100;
+      return Math.max(0, Math.min(100, value));
+    },
+    showRobotBackToDefault(robotIndex) {
+      const state = this.getRobotTrackingState(robotIndex);
+      return state && state.available && !state.isDefault && state.currentDone;
+    },
+    showRobotMotionLockedNotice(robotIndex) {
+      const state = this.getRobotTrackingState(robotIndex);
+      return state && state.available && !state.isDefault && !state.currentDone;
     },
     updatePerformanceStats() {
       if (!this.demo) {
