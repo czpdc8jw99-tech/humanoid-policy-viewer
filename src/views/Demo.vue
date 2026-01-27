@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.7</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.8</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -775,21 +775,31 @@ export default {
       }
       this.robotMotionErrors[robotIndex] = '';
 
-      if (!this.demo || !Array.isArray(this.demo.policyRunners) || !this.demo.policyRunners[robotIndex]) {
+      // v8.0.8: 单机器人模式下也允许通过卡片动作栏切换 motion（走全局 policyRunner）
+      if (!this.demo) {
         return;
       }
-      if (robotIndex >= (this.robotConfigs?.length || 0)) {
+      const appliedCount = this.robotConfigs?.length || 0;
+      if (robotIndex >= appliedCount) {
+        // 未生成的机器人：仅保存草稿，不影响当前仿真
         return;
       }
-      const tracking = this.demo.policyRunners[robotIndex]?.tracking ?? null;
-      if (!tracking) {
-        this.robotMotionErrors[robotIndex] = 'Tracking 未就绪';
-        return;
+
+      const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
+      let accepted = false;
+
+      if (isMultiRobot && this.demo.policyRunners?.[robotIndex]?.tracking) {
+        const tracking = this.demo.policyRunners[robotIndex].tracking;
+        const state = this.demo.readPolicyStateForRobot?.(robotIndex);
+        accepted = tracking.requestMotion(motionName, state);
+      } else {
+        // 单机器人：复用现有 requestMotion 逻辑
+        accepted = this.requestMotion(motionName);
       }
-      const state = this.demo.readPolicyStateForRobot?.(robotIndex);
-      const accepted = tracking.requestMotion(motionName, state);
+
       if (!accepted) {
-        const ts = tracking.playbackState?.() ?? null;
+        const tracking = this.demo?.policyRunner?.tracking ?? this.demo?.policyRunners?.[robotIndex]?.tracking ?? null;
+        const ts = tracking?.playbackState?.() ?? null;
         if (motionName !== 'default' && ts && (!ts.isDefault || !ts.currentDone)) {
           this.robotMotionErrors[robotIndex] = '当前动作未结束，请先回到 default';
         } else {
@@ -1293,6 +1303,24 @@ export default {
     // v8.0.3: 草稿机器人 motion 列表（未生成的机器人使用全局 motion 列表作为参考）
     getRobotMotionItemsDraft(robotIndex) {
       const appliedCount = this.robotConfigs?.length || 0;
+      // v8.0.8: 单机器人模式下，机器人0使用全局 trackingState/availableMotions
+      const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
+      if (!isMultiRobot && robotIndex === 0 && appliedCount === 1) {
+        const names = this.availableMotions ?? [];
+        const state = this.trackingState ?? null;
+        const canSwitchNonDefault = !!state && state.isDefault && state.currentDone;
+        const sorted = [...names].sort((a, b) => {
+          if (a === 'default') return -1;
+          if (b === 'default') return 1;
+          return a.localeCompare(b);
+        });
+        return sorted.map((name) => ({
+          title: name,
+          value: name,
+          disabled: name !== 'default' && !canSwitchNonDefault
+        }));
+      }
+
       if (robotIndex < appliedCount) {
         return this.getRobotMotionItems(robotIndex);
       }
