@@ -509,13 +509,13 @@ export class MuJoCoDemo {
     while (this.alive) {
       const loopStart = performance.now();
       
-      // v7.1.3: 在每次循环中动态检测多机器人模式（因为robotJointMappings可能在初始化后才被填充）
+      // v7.1.4: 在每次循环中动态检测多机器人模式（因为robotJointMappings可能在初始化后才被填充）
       const isMultiRobot = this.robotJointMappings && this.robotJointMappings.length > 1;
       const hasPolicyRunner = isMultiRobot 
         ? (this.policyRunners && this.policyRunners.length > 0)
         : this.policyRunner;
       
-      // v7.1.3: 只在第一次检测到模式变化时输出日志（避免刷屏）
+      // v7.1.4: 只在第一次检测到模式变化时输出日志（避免刷屏）
       if (!this._lastMultiRobotMode && isMultiRobot) {
         console.log(`[DEBUG] Multi-robot mode detected:`, {
           robotJointMappingsLength: this.robotJointMappings?.length,
@@ -566,16 +566,7 @@ export class MuJoCoDemo {
                 continue;
               }
               actionTargets[robotIdx] = actionTarget;
-              // v7.1.1: 添加调试日志（仅对第二个机器人）
-              if (robotIdx === 1) {
-                console.log(`[DEBUG] actionTargets[1] assigned:`, {
-                  type: actionTarget.constructor.name,
-                  length: actionTarget.length,
-                  first5: Array.from(actionTarget).slice(0, 5),
-                  actionTargetsLength: actionTargets.length,
-                  actionTargetsKeys: Object.keys(actionTargets)
-                });
-              }
+              // v7.1.4: 移除频繁的DEBUG日志（避免刷屏）
             }
             // v7.0.9: 验证actionTargets数组
             if (actionTargets.length !== this.robotJointMappings.length) {
@@ -619,20 +610,7 @@ export class MuJoCoDemo {
                 }
                 
                 const actionTarget = actionTargets[robotIdx];
-                // v7.1.1: 添加详细调试日志（仅对第二个机器人，且只在第一次substep）
-                if (robotIdx === 1 && substep === 0) {
-                  console.log(`[DEBUG] Robot 1 control application START:`, {
-                    actionTargetExists: !!actionTarget,
-                    actionTargetType: actionTarget ? actionTarget.constructor.name : 'undefined',
-                    actionTargetLength: actionTarget?.length,
-                    actionTargetsLength: actionTargets.length,
-                    actionTargetsKeys: Object.keys(actionTargets),
-                    actionTargetsHas0: 0 in actionTargets,
-                    actionTargetsHas1: 1 in actionTargets,
-                    actionTargets0Type: actionTargets[0] ? actionTargets[0].constructor.name : 'undefined',
-                    actionTargets1Type: actionTargets[1] ? actionTargets[1].constructor.name : 'undefined'
-                  });
-                }
+                // v7.1.4: 移除频繁的DEBUG日志（避免刷屏）
                 
                 if (!actionTarget) {
                   // v7.0.9: 如果actionTarget不存在，记录详细错误信息
@@ -669,23 +647,7 @@ export class MuJoCoDemo {
                   continue;
                 }
                 
-                // v7.0.9: 添加控制应用调试日志（仅对第二个机器人，且只在第一次substep和第一个关节）
-                if (robotIdx === 1 && substep === 0) {
-                  const firstCtrlAdr = mapping.ctrl_adr_policy[0];
-                  const firstTargetJpos = actionTarget[0];
-                  const firstQpos = this.simulation.qpos[mapping.qpos_adr_policy[0]];
-                  const firstKp = this.kpPolicy ? this.kpPolicy[0] : 0.0;
-                  const firstKd = this.kdPolicy ? this.kdPolicy[0] : 0.0;
-                  const firstTorque = firstKp * (firstTargetJpos - firstQpos) + firstKd * (0 - this.simulation.qvel[mapping.qvel_adr_policy[0]]);
-                  console.log(`[DEBUG] Robot 1 first joint control:`, {
-                    ctrlAdr: firstCtrlAdr,
-                    targetJpos: firstTargetJpos,
-                    qpos: firstQpos,
-                    kp: firstKp,
-                    kd: firstKd,
-                    torque: firstTorque
-                  });
-                }
+                // v7.1.4: 移除频繁的DEBUG日志（避免刷屏）
                 
                 for (let i = 0; i < mapping.numActions; i++) {
                   const qposAdr = mapping.qpos_adr_policy[i];
