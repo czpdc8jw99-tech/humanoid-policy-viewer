@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.4</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.5</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -229,6 +229,7 @@
                     <v-card-title class="text-caption">
                       机器人 {{ index + 1 }}
                       <span v-if="index >= robotConfigs.length" class="text-caption" style="opacity: 0.75;">（待生成）</span>
+                      <span v-else-if="index >= robotCountDraft" class="text-caption" style="opacity: 0.75;">（将删除）</span>
                     </v-card-title>
                     <v-card-text class="py-2">
                       <v-row dense>
@@ -669,22 +670,25 @@ export default {
   methods: {
     // v8.0.3: 确保草稿配置长度与草稿数量一致
     ensureDraftLength() {
-      const desired = Math.max(1, Math.min(11, this.robotCountDraft || 1));
+      const appliedCount = this.robotConfigs?.length || 0;
+      // v8.0.5: 允许 draft 数量 < 已应用数量，但 UI 仍显示已应用机器人（避免 motion 无法编辑）
+      const desired = Math.max(
+        appliedCount,
+        Math.max(1, Math.min(11, this.robotCountDraft || 1))
+      );
       if (!Array.isArray(this.robotConfigsDraft)) {
         this.robotConfigsDraft = [];
       }
-      const next = this.robotConfigsDraft.slice(0, desired).map((c) => ({
-        x: c?.x ?? 0,
-        y: c?.y ?? 0,
-        policyPath: c?.policyPath || this.getSelectedPolicyPath(),
-        motion: c?.motion || 'default'
-      }));
-      while (next.length < desired) {
+      const next = [];
+      for (let i = 0; i < desired; i++) {
+        const draft = this.robotConfigsDraft[i];
+        const applied = this.robotConfigs?.[i];
+        const base = draft ?? applied ?? null;
         next.push({
-          x: 0,
-          y: 0,
-          policyPath: this.getSelectedPolicyPath(),
-          motion: 'default'
+          x: base?.x ?? 0,
+          y: base?.y ?? 0,
+          policyPath: base?.policyPath || this.getSelectedPolicyPath(),
+          motion: base?.motion || 'default'
         });
       }
       this.robotConfigsDraft = next;
@@ -1019,7 +1023,8 @@ export default {
           x: c?.x ?? 0,
           y: c?.y ?? 0,
           policyPath: c?.policyPath || this.getSelectedPolicyPath(),
-          motion: c?.motion || 'default'
+          // v8.0.5: 重新生成场景后统一回到 default（避免旧 motion 残留造成混乱）
+          motion: 'default'
         }));
 
         // v6.1.1: 使用用户输入的位置，只添加Z坐标
