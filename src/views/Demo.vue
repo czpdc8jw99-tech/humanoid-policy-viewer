@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.3</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.4</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -1044,6 +1044,8 @@ export default {
         this.robotConfigs = nextConfigs;
         this.robotConfigsDraft = nextConfigs.map((c) => ({ ...c }));
         this.robotCountDraft = desiredCount;
+        // v8.0.4: 生成场景后清空旧的动作提示（例如“当前动作未结束…”），避免残留到新场景
+        this.robotMotionErrors = Array.from({ length: desiredCount }, () => '');
         // v6.1.0: 确保selectedRobotIndex在有效范围内
         if (this.selectedRobotIndex >= desiredCount) {
           this.selectedRobotIndex = 0;
