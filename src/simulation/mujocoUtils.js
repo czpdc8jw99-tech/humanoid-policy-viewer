@@ -267,6 +267,159 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.params.current_motion = 'default';
 }
 
+/**
+ * 仅为指定机器人重载策略（多机器人独立策略的基础能力）(v7.2.2)
+ *
+ * 注意：
+ * - 当前模拟主循环在多机器人模式下仍使用全局 this.control_type 进行分支判断。
+ *   因此这里要求所有机器人的 control_type 一致，否则直接抛错。
+ * - 主循环的 PD 增益在 v7.2.2 起支持按 robotIdx 读取 this.robotPolicyParams[robotIdx].kp/kd。
+ */
+export async function reloadPolicyForRobot(robotIdx, policy_path, options = {}) {
+  if (typeof robotIdx !== 'number' || !Number.isFinite(robotIdx)) {
+    throw new Error('reloadPolicyForRobot: robotIdx must be a number');
+  }
+  if (!policy_path || typeof policy_path !== 'string') {
+    throw new Error('reloadPolicyForRobot: policy_path must be a string');
+  }
+
+  const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
+  if (!isMultiRobot) {
+    // 单机器人：退回全量 reload
+    return await reloadPolicy.call(this, policy_path, options);
+  }
+
+  const idx = Math.max(0, Math.min(Math.floor(robotIdx), (this.robotConfigs.length - 1)));
+
+  // 等待该机器人的 runner 完成推理，避免并发冲突
+  const existingRunner = this.policyRunners?.[idx];
+  while (existingRunner?.isInferencing) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  const response = await fetch(policy_path);
+  if (!response.ok) {
+    throw new Error(`Failed to load policy config from ${policy_path}: ${response.status}`);
+  }
+  const config = await response.json();
+  if (options?.onnxPath) {
+    config.onnx = { ...(config.onnx ?? {}), path: options.onnxPath };
+  }
+
+  let trackingConfig = null;
+  if (config.tracking) {
+    trackingConfig = { ...config.tracking };
+    if (trackingConfig.motions_path && !trackingConfig.motions) {
+      const motionsUrl = new URL(trackingConfig.motions_path, window.location.href);
+      const response = await fetch(motionsUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to load tracking motions from ${motionsUrl}: ${response.status}`);
+      }
+      const payload = await response.json();
+      const indexedMotions = await loadMotionIndex(payload, motionsUrl);
+      trackingConfig.motions = indexedMotions ?? payload;
+    }
+  }
+
+  const policyJointNames = Array.isArray(config.policy_joint_names)
+    ? config.policy_joint_names
+    : null;
+  if (!policyJointNames || policyJointNames.length === 0) {
+    throw new Error('Policy configuration must include a non-empty policy_joint_names list');
+  }
+
+  const newControlType = config.control_type ?? 'joint_position';
+  if (this.control_type && this.control_type !== newControlType) {
+    throw new Error(`control_type mismatch: existing=${this.control_type}, new=${newControlType}`);
+  }
+  this.control_type = newControlType;
+
+  // 为该机器人更新关节映射（允许不同策略有不同 policy_joint_names）
+  if (!this.robotJointMappings) {
+    this.robotJointMappings = [];
+  }
+  const robotPrefix = idx === 0 ? '' : `robot${idx + 1}_`;
+  configureJointMappingsWithPrefix(this, policyJointNames, robotPrefix, idx);
+
+  const mapping = this.robotJointMappings[idx];
+  if (!mapping) {
+    throw new Error(`Failed to configure joint mapping for robot ${idx}`);
+  }
+
+  const numActions = mapping.numActions ?? policyJointNames.length;
+  const configDefaultJointPos = Array.isArray(config.default_joint_pos)
+    ? config.default_joint_pos
+    : null;
+  if (configDefaultJointPos && configDefaultJointPos.length !== numActions) {
+    throw new Error(
+      `default_joint_pos length ${configDefaultJointPos.length} does not match numActions ${numActions}`
+    );
+  }
+
+  const defaultJposPolicy = configDefaultJointPos ? new Float32Array(configDefaultJointPos) : null;
+  const kpPolicy = toFloatArray(config.stiffness, numActions, 0.0);
+  const kdPolicy = toFloatArray(config.damping, numActions, 0.0);
+
+  if (trackingConfig) {
+    trackingConfig.policy_joint_names = policyJointNames.slice();
+  }
+
+  // 创建该机器人的独立 PolicyRunner
+  const policyRunner = new PolicyRunner(
+    {
+      ...config,
+      tracking: trackingConfig,
+      policy_joint_names: policyJointNames,
+      action_scale: config.action_scale,
+      default_joint_pos: defaultJposPolicy
+    },
+    {
+      policyJointNames,
+      actionScale: config.action_scale,
+      defaultJointPos: defaultJposPolicy
+    }
+  );
+  await policyRunner.init();
+
+  const state = this.readPolicyStateForRobot?.(idx);
+  if (state) {
+    policyRunner.reset(state);
+  } else {
+    policyRunner.reset();
+  }
+
+  if (!this.policyRunners) {
+    this.policyRunners = [];
+  }
+  this.policyRunners[idx] = policyRunner;
+  if (idx === 0) {
+    // 向后兼容
+    this.policyRunner = policyRunner;
+  }
+
+  // 记录 per-robot 策略参数，供主循环使用
+  if (!this.robotPolicyParams) {
+    this.robotPolicyParams = [];
+  }
+  this.robotPolicyParams[idx] = {
+    kp: kpPolicy,
+    kd: kdPolicy,
+    control_type: newControlType,
+    defaultJointPos: defaultJposPolicy,
+    policyPath: policy_path,
+    policyJointNames: policyJointNames.slice()
+  };
+
+  // 更新配置记录（供 UI/调试查看）
+  if (Array.isArray(this.robotConfigs) && this.robotConfigs[idx]) {
+    this.robotConfigs[idx].policyPath = policy_path;
+  }
+  this.currentPolicyPath = policy_path;
+
+  console.log(`Reloaded policy for robot ${idx + 1}:`, policy_path);
+  return true;
+}
+
 export async function loadSceneFromURL(mujoco, filename, parent) {
   if (parent.simulation) {
     parent.simulation.free();

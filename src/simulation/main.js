@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { DragStateManager } from './utils/DragStateManager.js';
-import { downloadExampleScenesFolder, getPosition, getQuaternion, toMujocoPos, reloadScene, reloadPolicy } from './mujocoUtils.js';
+import { downloadExampleScenesFolder, getPosition, getQuaternion, toMujocoPos, reloadScene, reloadPolicy, reloadPolicyForRobot } from './mujocoUtils.js';
 import { generateMultiRobotXML } from './multiRobotGenerator.js';
 
 const defaultPolicy = "./examples/checkpoints/g1/tracking_policy_amass.json";
@@ -20,6 +20,7 @@ export class MuJoCoDemo {
     this.policyRunners = []; // 多机器人模式 (v7.0.4)
     this.kpPolicy = null;
     this.kdPolicy = null;
+    this.robotPolicyParams = []; // v7.2.2: 每个机器人的PD参数/策略信息
     this.actionTarget = null;
     this.model = null;
     this.data = null;
@@ -192,6 +193,7 @@ export class MuJoCoDemo {
 
     this.reloadScene = reloadScene.bind(this);
     this.reloadPolicy = reloadPolicy.bind(this);
+    this.reloadPolicyForRobot = reloadPolicyForRobot.bind(this);
     
     // 多机器人配置 (v6.1.3)
     this.robotConfigs = []; // 机器人配置数组，包含每个机器人的位置信息 {x, y, z}
@@ -656,8 +658,12 @@ export class MuJoCoDemo {
                   
                   // v7.0.9: 确保actionTarget[i]是有效数字
                   const targetJpos = (actionTarget[i] !== undefined && actionTarget[i] !== null) ? actionTarget[i] : 0.0;
-                  const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
-                  const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
+                  // v7.2.2: 支持每个机器人使用各自的PD参数（为独立策略准备）
+                  const robotParams = this.robotPolicyParams?.[robotIdx] ?? null;
+                  const kpArr = robotParams?.kp ?? this.kpPolicy;
+                  const kdArr = robotParams?.kd ?? this.kdPolicy;
+                  const kp = kpArr ? kpArr[i] : 0.0;
+                  const kd = kdArr ? kdArr[i] : 0.0;
                   const torque = kp * (targetJpos - this.simulation.qpos[qposAdr]) 
                                + kd * (0 - this.simulation.qvel[qvelAdr]);
                   

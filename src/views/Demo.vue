@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.2.1</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.2.2</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -245,6 +245,24 @@
                             @blur="validateCoordinate('y', index, robot)"
                           ></v-text-field>
                         </v-col>
+                        <v-col cols="12" class="mt-2">
+                          <v-select
+                            v-model="robot.policyPath"
+                            :items="policyPathItems"
+                            label="策略（每个机器人可不同）"
+                            density="compact"
+                            hide-details
+                            :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
+                            @update:modelValue="onRobotPolicyChange(index, $event)"
+                          ></v-select>
+                          <div class="text-caption" v-if="robotPolicyErrors[index]" style="color: #B00020;">
+                            {{ robotPolicyErrors[index] }}
+                          </div>
+                          <div class="text-caption" v-else>
+                            当前：{{ (robot.policyPath || '').split('/').pop() || '—' }}
+                            <span v-if="robotPolicyLoading[index]">（加载中…）</span>
+                          </div>
+                        </v-col>
                       </v-row>
                     </v-card-text>
                   </v-card>
@@ -420,6 +438,9 @@ export default {
       motion: 'default'
     }], // Z固定为0.8，不显示
     isGeneratingRobots: false,
+    // v7.2.2: 每个机器人的策略加载状态/错误（UI可见反馈）
+    robotPolicyLoading: [],
+    robotPolicyErrors: [],
     // v6.1.0: 聚焦机器人选择
     selectedRobotIndex: 0, // 当前选择的机器人索引（0-based）
     // 坐标范围提示 - v4.1.3
@@ -535,6 +556,13 @@ export default {
         value: policy.value
       }));
     },
+    // v7.2.2: 以 policyPath 作为 value，便于每个机器人直接存储路径
+    policyPathItems() {
+      return this.policies.map((policy) => ({
+        title: policy.title,
+        value: policy.policyPath
+      }));
+    },
     selectedPolicy() {
       return this.policies.find((policy) => policy.value === this.currentPolicy) ?? null;
     },
@@ -556,6 +584,39 @@ export default {
     getSelectedPolicyPath() {
       const selected = this.policies?.find((p) => p.value === this.currentPolicy);
       return selected?.policyPath ?? './examples/checkpoints/g1/tracking_policy_amass.json';
+    },
+    // v7.2.2: 选择某个机器人的策略（仅重载该机器人）
+    async onRobotPolicyChange(robotIndex, policyPath) {
+      // 先更新本地配置（即使 demo 还没初始化，也能保存 UI 状态）
+      if (this.robotConfigs && this.robotConfigs[robotIndex]) {
+        this.robotConfigs[robotIndex].policyPath = policyPath;
+      }
+
+      if (!this.demo || typeof this.demo.reloadPolicyForRobot !== 'function') {
+        return;
+      }
+
+      // 多机器人场景未生成或 runner 未就绪时，先不触发重载
+      const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
+      if (!isMultiRobot) {
+        return;
+      }
+
+      // 清空错误并开始加载
+      this.robotPolicyErrors[robotIndex] = '';
+      this.robotPolicyLoading[robotIndex] = true;
+      try {
+        const selected = this.policies.find((p) => p.policyPath === policyPath) ?? null;
+        await this.demo.reloadPolicyForRobot(robotIndex, policyPath, {
+          onnxPath: selected?.onnxPath
+        });
+      } catch (e) {
+        const msg = e?.message || e?.toString?.() || '策略加载失败';
+        this.robotPolicyErrors[robotIndex] = msg;
+        console.error(e);
+      } finally {
+        this.robotPolicyLoading[robotIndex] = false;
+      }
     },
     detectSafari() {
       const ua = navigator.userAgent;
@@ -735,10 +796,14 @@ export default {
             motion: 'default'
             // Z固定为0.8，不存储
           });
+          this.robotPolicyLoading[i] = false;
+          this.robotPolicyErrors[i] = '';
         }
       } else if (this.robotCount < currentLength) {
         // 移除多余的机器人
         this.robotConfigs = this.robotConfigs.slice(0, this.robotCount);
+        this.robotPolicyLoading = this.robotPolicyLoading.slice(0, this.robotCount);
+        this.robotPolicyErrors = this.robotPolicyErrors.slice(0, this.robotCount);
       }
       // v6.1.1: 不再强制重置位置，保留用户输入的值
     },
