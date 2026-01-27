@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.0.8</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.9</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -388,18 +388,6 @@
             hide-details
             :disabled="state !== 1 || robotConfigs.length < 1"
           ></v-select>
-          <v-btn
-            size="small"
-            variant="outlined"
-            color="success"
-            :disabled="state !== 1"
-            @click="focusOnRobot"
-            block
-            class="mt-2"
-          >
-            <v-icon icon="mdi-target" class="mr-1"></v-icon>
-            聚焦到机器人 {{ selectedRobotIndex + 1 }}
-          </v-btn>
           <v-btn
             size="small"
             variant="outlined"
@@ -975,20 +963,6 @@ export default {
         this.motionUploadType = badCount > 0 ? 'warning' : 'success';
       }
       this.motionUploadFiles = [];
-    },
-    // v6.1.2: 移除 toggleCameraFollow 方法，follow 功能已禁用
-    focusOnRobot() {
-      if (!this.demo) {
-        return;
-      }
-      /**
-       * 聚焦到选中的机器人 (v6.1.0)
-       * 将相机移动到指定机器人的位置，保持合适的距离和角度
-       */
-      const robotIndex = this.selectedRobotIndex || 0;
-      if (this.demo.focusOnRobot) {
-        this.demo.focusOnRobot(robotIndex);
-      }
     },
     // v8.0.7: 聚焦并开启跟随；用户按 WASDQE 会自动解除跟随（在 MuJoCoDemo 键盘事件里实现）
     focusAndFollowRobot() {
