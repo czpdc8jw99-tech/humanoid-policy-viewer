@@ -927,6 +927,77 @@ export class MuJoCoDemo {
     this.params.paused = false;
   }
 
+  /**
+   * 请求切换 motion（多机器人支持）。
+   *
+   * 说明：
+   * - 这个方法主要用于控制台调试/脚本化控制，避免把 Vue 组件方法暴露出来。
+   * - TrackingHelper.requestMotion() 有严格门槛：非 default motion 仅在 (currentName==='default' && currentDone===true) 时允许。
+   *   当 force=true 时，将绕过该门槛，直接从当前状态开始切换到目标 motion（用于验证与调试）。
+   *
+   * @param {string} name - motion 名称（必须存在于 tracking.availableMotions()）
+   * @param {number|null} robotIndex - null 表示所有机器人；>=0 表示指定机器人
+   * @param {boolean} force - 是否强制切换（绕过 requestMotion 门槛）
+   * @returns {boolean} 是否接受该 motion（all / single）
+   */
+  requestMotion(name, robotIndex = null, force = false) {
+    const hasMulti = this.robotJointMappings && this.robotJointMappings.length > 1;
+    const runners = (hasMulti && Array.isArray(this.policyRunners) && this.policyRunners.length > 0)
+      ? this.policyRunners
+      : (this.policyRunner ? [this.policyRunner] : []);
+
+    if (!name || typeof name !== 'string' || runners.length === 0) {
+      return false;
+    }
+
+    const applyToRobot = (idx) => {
+      const runner = runners[idx];
+      const tracking = runner?.tracking ?? null;
+      if (!tracking) {
+        return false;
+      }
+      // motion 必须存在
+      if (!tracking.motions || !tracking.motions[name]) {
+        return false;
+      }
+      const state = hasMulti ? this.readPolicyStateForRobot(idx) : this.readPolicyState();
+
+      let accepted = false;
+      if (force && typeof tracking._startMotionFromCurrent === 'function') {
+        // 强制切换：绕过 TrackingHelper.requestMotion() 的门槛
+        tracking._startMotionFromCurrent(name, state);
+        accepted = true;
+      } else {
+        accepted = tracking.requestMotion(name, state);
+      }
+
+      if (accepted && Array.isArray(this.robotConfigs) && this.robotConfigs[idx]) {
+        this.robotConfigs[idx].motion = name;
+      }
+      return accepted;
+    };
+
+    if (robotIndex === null) {
+      let allAccepted = true;
+      for (let i = 0; i < runners.length; i++) {
+        const ok = applyToRobot(i);
+        if (!ok) {
+          allAccepted = false;
+        }
+      }
+      if (allAccepted) {
+        this.params.current_motion = name;
+      }
+      return allAccepted;
+    }
+
+    if (typeof robotIndex !== 'number' || !Number.isFinite(robotIndex)) {
+      return false;
+    }
+    const idx = Math.max(0, Math.min(Math.floor(robotIndex), runners.length - 1));
+    return applyToRobot(idx);
+  }
+
   render() {
     if (!this.model || !this.data || !this.simulation) {
       return;

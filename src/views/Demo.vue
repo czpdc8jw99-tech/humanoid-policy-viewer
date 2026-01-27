@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.2.0</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.2.1</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -410,7 +410,15 @@ export default {
     resize_listener: null,
     // 多机器人配置 - v4.0
     robotCount: 1,
-    robotConfigs: [{ x: 0, y: 0 }], // Z固定为0.8，不显示
+    // v7.2.1: 扩展 robotConfigs，为独立策略做准备
+    // - policyPath: 每个机器人的策略文件路径（默认跟随当前选择的策略）
+    // - motion: 每个机器人的当前 motion（默认 'default'）
+    robotConfigs: [{
+      x: 0,
+      y: 0,
+      policyPath: './examples/checkpoints/g1/tracking_policy_amass.json',
+      motion: 'default'
+    }], // Z固定为0.8，不显示
     isGeneratingRobots: false,
     // v6.1.0: 聚焦机器人选择
     selectedRobotIndex: 0, // 当前选择的机器人索引（0-based）
@@ -544,6 +552,11 @@ export default {
     }
   },
   methods: {
+    // v7.2.1: 根据当前策略选项获取 policyPath（用于 robotConfigs 默认值/补全）
+    getSelectedPolicyPath() {
+      const selected = this.policies?.find((p) => p.value === this.currentPolicy);
+      return selected?.policyPath ?? './examples/checkpoints/g1/tracking_policy_amass.json';
+    },
     detectSafari() {
       const ua = navigator.userAgent;
       return /Safari\//.test(ua)
@@ -717,7 +730,9 @@ export default {
         for (let i = currentLength; i < this.robotCount; i++) {
           this.robotConfigs.push({
             x: 0,
-            y: 0
+            y: 0,
+            policyPath: this.getSelectedPolicyPath(),
+            motion: 'default'
             // Z固定为0.8，不存储
           });
         }
@@ -771,10 +786,13 @@ export default {
       this.isGeneratingRobots = true;
       try {
         // v6.1.1: 使用用户输入的位置，只添加Z坐标
-        const configsWithZ = this.robotConfigs.map(config => ({
+        const configsWithZ = this.robotConfigs.map((config) => ({
+          ...config,
           x: Math.max(-20, Math.min(20, config.x || 0)), // 使用用户输入的X坐标，限制在范围内
           y: Math.max(-10, Math.min(10, config.y || 0)), // 使用用户输入的Y坐标，限制在范围内
-          z: 0.8 // Z固定为0.8
+          z: 0.8, // Z固定为0.8
+          policyPath: config.policyPath || this.getSelectedPolicyPath(),
+          motion: config.motion || 'default'
         }));
         
         // 调用demo的方法来生成多机器人场景
