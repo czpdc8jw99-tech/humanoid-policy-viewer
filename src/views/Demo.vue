@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.1.6</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.1.7</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -199,7 +199,7 @@
             <v-expansion-panel>
               <v-expansion-panel-title>
                 <v-icon icon="mdi-robot" class="mr-2"></v-icon>
-                多机器人配置 (最多10个)
+                多机器人配置 (最多11个)
               </v-expansion-panel-title>
               <v-expansion-panel-text>
                 <v-text-field
@@ -207,7 +207,7 @@
                   type="number"
                   label="机器人数量"
                   min="1"
-                  max="10"
+                  max="11"
                   density="compact"
                   hide-details
                   class="mb-2"
@@ -707,8 +707,8 @@ export default {
     },
     // 多机器人配置方法 - v6.1.1: 使用用户输入的位置
     onRobotCountChange() {
-      // 限制数量在1-10之间
-      this.robotCount = Math.max(1, Math.min(10, this.robotCount || 1));
+      // 限制数量在1-11之间
+      this.robotCount = Math.max(1, Math.min(11, this.robotCount || 1));
       
       // 调整robotConfigs数组
       const currentLength = this.robotConfigs.length;
