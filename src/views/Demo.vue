@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.1.7</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.2.0</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -930,28 +930,53 @@ export default {
       }
       return tracking.addMotions(motions, options);
     },
-    requestMotion(name) {
-      // v7.1.5: 支持多机器人模式 - 为所有机器人的 tracking 都调用 requestMotion
+    requestMotion(name, robotIndex = null) {
+      // v7.2.0: 支持为单个机器人设置 motion
+      // robotIndex === null: 为所有机器人设置（保持向后兼容）
+      // robotIndex >= 0: 只为指定机器人设置
+      
       const isMultiRobot = this.demo?.robotJointMappings?.length > 1;
       
       if (isMultiRobot && this.demo?.policyRunners) {
-        // 多机器人模式：为所有机器人的 tracking 都调用 requestMotion
-        let allAccepted = true;
-        for (let robotIdx = 0; robotIdx < this.demo.policyRunners.length; robotIdx++) {
-          const tracking = this.demo.policyRunners[robotIdx]?.tracking;
+        // 多机器人模式
+        if (robotIndex === null) {
+          // 为所有机器人设置 motion
+          let allAccepted = true;
+          for (let robotIdx = 0; robotIdx < this.demo.policyRunners.length; robotIdx++) {
+            const tracking = this.demo.policyRunners[robotIdx]?.tracking;
+            if (!tracking) {
+              continue;
+            }
+            const state = this.demo.readPolicyStateForRobot(robotIdx);
+            const accepted = tracking.requestMotion(name, state);
+            if (!accepted) {
+              allAccepted = false;
+            }
+          }
+          if (allAccepted) {
+            this.demo.params.current_motion = name;
+          }
+          return allAccepted;
+        } else {
+          // 只为指定机器人设置 motion
+          const tracking = this.demo.policyRunners[robotIndex]?.tracking;
           if (!tracking) {
-            continue;
+            return false;
           }
-          const state = this.demo.readPolicyStateForRobot(robotIdx);  // 使用各自的状态
+          const state = this.demo.readPolicyStateForRobot(robotIndex);
           const accepted = tracking.requestMotion(name, state);
-          if (!accepted) {
-            allAccepted = false;
+          if (accepted) {
+            // 更新该机器人的 motion（如果 robotConfigs 有 motion 字段）
+            if (this.demo.robotConfigs && this.demo.robotConfigs[robotIndex]) {
+              this.demo.robotConfigs[robotIndex].motion = name;
+            }
+            // 如果只有一个机器人，也更新全局 motion
+            if (this.demo.policyRunners.length === 1) {
+              this.demo.params.current_motion = name;
+            }
           }
+          return accepted;
         }
-        if (allAccepted) {
-          this.demo.params.current_motion = name;
-        }
-        return allAccepted;
       } else {
         // 单机器人模式：保持原有逻辑
         const tracking = this.demo?.policyRunner?.tracking ?? null;
