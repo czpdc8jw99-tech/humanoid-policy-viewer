@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.1.0</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.1</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -223,6 +223,13 @@
                 <div class="text-caption mb-2">
                   当前场景机器人数量：{{ robotConfigs.length }}；待应用数量：{{ robotCountDraft }}
                 </div>
+                <div
+                  class="text-caption mb-2"
+                  v-if="getRobotCountPendingText()"
+                  style="color: #0D47A1;"
+                >
+                  {{ getRobotCountPendingText() }}
+                </div>
                 
                 <div v-for="(robot, index) in robotConfigsDraft" :key="index" class="mb-3">
                   <v-card variant="outlined" density="compact">
@@ -258,6 +265,15 @@
                             max="10"
                             @blur="validateCoordinate('y', index, robot)"
                           ></v-text-field>
+                        </v-col>
+                        <v-col cols="12">
+                          <div
+                            class="text-caption"
+                            v-if="getRobotPositionPendingText(index)"
+                            style="color: #0D47A1;"
+                          >
+                            {{ getRobotPositionPendingText(index) }}
+                          </div>
                         </v-col>
                         <v-col cols="12" class="mt-2">
                           <v-select
@@ -302,7 +318,7 @@
                             v-if="index < robotConfigs.length && robotPendingMotions[index]"
                             style="color: #0D47A1;"
                           >
-                            待使用：{{ robotPendingMotions[index] }}（回到 default 后自动播放）
+                            待应用：{{ robotPendingMotions[index] }}（回到 default 后自动播放）
                           </div>
                         </v-col>
 
@@ -533,7 +549,7 @@ export default {
     robotPolicyErrors: [''],
     // v7.2.3: 每个机器人的动作错误提示 + 每个机器人独立 tracking state
     robotMotionErrors: [''],
-    // v8.1.0: 动作“待使用”队列（当下无法切换时先排队，回到 default 后自动播放）
+    // v8.1.0: 动作“待应用”队列（tracking 未就绪等原因无法切换时先排队，回到 default 后自动播放）
     robotPendingMotions: [''],
     robotTrackingStates: [],
     robotAvailableMotions: [],
@@ -707,6 +723,48 @@ export default {
       this.robotMotionErrors = Array.from({ length: desired }, (_, i) => this.robotMotionErrors?.[i] ?? '');
       this.robotPendingMotions = Array.from({ length: desired }, (_, i) => this.robotPendingMotions?.[i] ?? '');
     },
+    // v8.1.1: 数量/位置的“待应用”提示（改回原值会自动消失）
+    getRobotCountPendingText() {
+      const applied = this.robotConfigs?.length || 0;
+      const draft = Math.max(1, Math.min(11, this.robotCountDraft || 1));
+      if (draft === applied) {
+        return '';
+      }
+      if (draft > applied) {
+        return `待应用：将新增 ${draft - applied} 个机器人（点击“生成多机器人场景”生效）`;
+      }
+      return `待应用：将删除 ${applied - draft} 个机器人（点击“生成多机器人场景”生效）`;
+    },
+    getRobotPositionPendingText(robotIndex) {
+      const appliedCount = this.robotConfigs?.length || 0;
+      const draftCount = Math.max(1, Math.min(11, this.robotCountDraft || 1));
+      // 将删除的机器人：不提示位置待应用
+      if (robotIndex >= draftCount && robotIndex < appliedCount) {
+        return '';
+      }
+      const draft = this.robotConfigsDraft?.[robotIndex] ?? null;
+      if (!draft) {
+        return '';
+      }
+      // 未生成的新机器人
+      if (robotIndex >= appliedCount) {
+        const dx = Number(draft.x ?? 0);
+        const dy = Number(draft.y ?? 0);
+        return `待应用：位置为 X=${dx}, Y=${dy}（生成后生效）`;
+      }
+      const applied = this.robotConfigs?.[robotIndex] ?? null;
+      if (!applied) {
+        return '';
+      }
+      const ax = Number(applied.x ?? 0);
+      const ay = Number(applied.y ?? 0);
+      const dx = Number(draft.x ?? 0);
+      const dy = Number(draft.y ?? 0);
+      if (dx === ax && dy === ay) {
+        return '';
+      }
+      return `待应用：位置将变为 X=${dx}, Y=${dy}（生成后生效）`;
+    },
     // v7.2.1: 根据当前策略选项获取 policyPath（用于 robotConfigs 默认值/补全）
     getSelectedPolicyPath() {
       const selected = this.policies?.find((p) => p.value === this.currentPolicy);
@@ -718,7 +776,7 @@ export default {
       if (this.robotConfigsDraft && this.robotConfigsDraft[robotIndex]) {
         this.robotConfigsDraft[robotIndex].policyPath = policyPath;
       }
-      // v8.1.0: 重新选择策略时，清空该机器人的“待使用”动作（避免动作列表变化带来困惑）
+      // v8.1.0: 重新选择策略时，清空该机器人的“待应用”动作（避免动作列表变化带来困惑）
       if (this.robotPendingMotions?.[robotIndex]) {
         this.robotPendingMotions[robotIndex] = '';
       }
@@ -779,7 +837,7 @@ export default {
         this.robotConfigsDraft[robotIndex].motion = motionName;
       }
       this.robotMotionErrors[robotIndex] = '';
-      // v8.1.0: 每次选择动作都覆盖“待使用”
+      // v8.1.0: 每次选择动作都覆盖“待应用”
       if (this.robotPendingMotions?.[robotIndex]) {
         this.robotPendingMotions[robotIndex] = '';
       }
@@ -813,18 +871,21 @@ export default {
       if (!accepted) {
         const tracking = this.demo?.policyRunner?.tracking ?? this.demo?.policyRunners?.[robotIndex]?.tracking ?? null;
         const ts = tracking?.playbackState?.() ?? this.getRobotTrackingState?.(robotIndex) ?? null;
-        // v8.1.0: 若当前无法切换（未回到 default），将该动作加入“待使用”，回到 default 后自动播放
+        // v8.1.1: 若当前动作未结束（未回到 default），保持旧逻辑：红色提示回到 default，不加入“待应用”
         const notReady = !!ts && (!ts.isDefault || !ts.currentDone);
         const trackingNotReady = !ts || ts.available === false;
-        if (motionName && motionName !== 'default' && (notReady || trackingNotReady)) {
+        if (motionName && motionName !== 'default' && notReady) {
+          this.robotMotionErrors[robotIndex] = '当前动作未结束，请先回到 default';
+          this.robotPendingMotions[robotIndex] = '';
+        } else if (motionName && motionName !== 'default' && trackingNotReady) {
           this.robotPendingMotions[robotIndex] = motionName;
-          // 不再显示“当前动作未结束...”这种报错；改为“待使用”
+          // tracking 未就绪时：用“待应用”提示（蓝色），并在 default 后自动播放
           this.robotMotionErrors[robotIndex] = '';
         } else {
           this.robotMotionErrors[robotIndex] = '动作切换被拒绝（动作名不存在或不允许切换）';
         }
       } else {
-        // 切换成功：清空待使用
+        // 切换成功：清空待应用
         this.robotPendingMotions[robotIndex] = '';
       }
       // v8.1.0: 仅在切换成功时更新已应用 motion（避免 UI 与真实播放状态不一致）
@@ -1097,7 +1158,7 @@ export default {
         this.robotCountDraft = desiredCount;
         // v8.0.4: 生成场景后清空旧的动作提示（例如“当前动作未结束…”），避免残留到新场景
         this.robotMotionErrors = Array.from({ length: desiredCount }, () => '');
-        // v8.1.0: 生成场景成功后清空“待使用”动作（新场景从 default 开始）
+        // v8.1.0: 生成场景成功后清空“待应用”动作（新场景从 default 开始）
         this.robotPendingMotions = Array.from({ length: desiredCount }, () => '');
         // v6.1.0: 确保selectedRobotIndex在有效范围内
         if (this.selectedRobotIndex >= desiredCount) {
@@ -1133,7 +1194,7 @@ export default {
       if (!this.demo || !value) {
         return;
       }
-      // v8.1.0: 切换策略会改变可用动作/状态，先清空“待使用”与旧提示
+      // v8.1.0: 切换策略会改变可用动作/状态，先清空“待应用”与旧提示
       this.robotPendingMotions = (this.robotPendingMotions || []).map(() => '');
       this.robotMotionErrors = (this.robotMotionErrors || []).map((msg) =>
         msg === '当前动作未结束，请先回到 default' ? '' : msg
@@ -1281,7 +1342,7 @@ export default {
         this.robotTrackingStates = states;
         this.robotAvailableMotions = motions;
 
-        // v8.1.0: 自动执行“待使用”动作：当回到 default + done 时触发
+        // v8.1.0: 自动执行“待应用”动作：当回到 default + done 时触发
         const appliedCount = this.robotConfigs?.length || 0;
         for (let i = 0; i < Math.min(appliedCount, states.length); i++) {
           const pending = this.robotPendingMotions?.[i] ?? '';
@@ -1304,14 +1365,14 @@ export default {
           } else {
             // 避免无限重试：一次失败就清空 pending，并给出错误提示
             this.robotPendingMotions[i] = '';
-            this.robotMotionErrors[i] = '待使用动作播放失败（动作名不存在或不允许切换）';
+            this.robotMotionErrors[i] = '待应用动作播放失败（动作名不存在或不允许切换）';
           }
         }
       } else {
         this.robotTrackingStates = [];
         this.robotAvailableMotions = [];
 
-        // v8.1.0: 单机器人时也支持“待使用”（用于机器人卡片的 motion 下拉）
+        // v8.1.0: 单机器人时也支持“待应用”（用于机器人卡片的 motion 下拉）
         const pending = this.robotPendingMotions?.[0] ?? '';
         const st = this.trackingState;
         if (st && st.available && st.isDefault && st.currentDone && this.robotMotionErrors?.[0] === '当前动作未结束，请先回到 default') {
@@ -1324,7 +1385,7 @@ export default {
             this.robotMotionErrors[0] = '';
           } else {
             this.robotPendingMotions[0] = '';
-            this.robotMotionErrors[0] = '待使用动作播放失败（动作名不存在或不允许切换）';
+            this.robotMotionErrors[0] = '待应用动作播放失败（动作名不存在或不允许切换）';
           }
         }
       }
