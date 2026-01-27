@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.2.3</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.0.0</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -108,7 +108,13 @@
           class="mt-3"
         >
           Motion "{{ trackingState.currentName }}" finished. Return to the default pose before starting another clip.
-          <v-btn color="primary" block density="compact" @click="backToDefault">
+          <v-btn
+            class="back-to-default-btn"
+            color="primary"
+            block
+            density="compact"
+            @click="backToDefault"
+          >
             Back to default pose
           </v-btn>
         </v-alert>
@@ -302,6 +308,7 @@
                           >
                             Motion "{{ getRobotTrackingState(index).currentName }}" finished. Return to default pose before starting another clip.
                             <v-btn
+                              class="back-to-default-btn"
                               color="primary"
                               block
                               density="compact"
@@ -1424,5 +1431,20 @@ export default {
 .motion-progress-no-animation :deep(.v-progress-linear__background) {
   transition: none !important;
   animation: none !important;
+}
+
+/* v8.0.0: BackToDefault 按钮允许两行显示，避免文字被裁切 */
+:deep(.back-to-default-btn) {
+  height: auto;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+:deep(.back-to-default-btn .v-btn__content) {
+  white-space: normal;
+  line-height: 1.15;
+  text-align: center;
+  display: block;
 }
 </style>
