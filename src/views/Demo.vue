@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v7.1.4</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v7.1.5</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -931,16 +931,40 @@ export default {
       return tracking.addMotions(motions, options);
     },
     requestMotion(name) {
-      const tracking = this.demo?.policyRunner?.tracking ?? null;
-      if (!tracking || !this.demo) {
-        return false;
+      // v7.1.5: 支持多机器人模式 - 为所有机器人的 tracking 都调用 requestMotion
+      const isMultiRobot = this.demo?.robotJointMappings?.length > 1;
+      
+      if (isMultiRobot && this.demo?.policyRunners) {
+        // 多机器人模式：为所有机器人的 tracking 都调用 requestMotion
+        let allAccepted = true;
+        for (let robotIdx = 0; robotIdx < this.demo.policyRunners.length; robotIdx++) {
+          const tracking = this.demo.policyRunners[robotIdx]?.tracking;
+          if (!tracking) {
+            continue;
+          }
+          const state = this.demo.readPolicyStateForRobot(robotIdx);  // 使用各自的状态
+          const accepted = tracking.requestMotion(name, state);
+          if (!accepted) {
+            allAccepted = false;
+          }
+        }
+        if (allAccepted) {
+          this.demo.params.current_motion = name;
+        }
+        return allAccepted;
+      } else {
+        // 单机器人模式：保持原有逻辑
+        const tracking = this.demo?.policyRunner?.tracking ?? null;
+        if (!tracking || !this.demo) {
+          return false;
+        }
+        const state = this.demo.readPolicyState();
+        const accepted = tracking.requestMotion(name, state);
+        if (accepted) {
+          this.demo.params.current_motion = name;
+        }
+        return accepted;
       }
-      const state = this.demo.readPolicyState();
-      const accepted = tracking.requestMotion(name, state);
-      if (accepted) {
-        this.demo.params.current_motion = name;
-      }
-      return accepted;
     }
   },
   mounted() {
