@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.3</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.4</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -1721,5 +1721,23 @@ export default {
   line-height: 1.15;
   text-align: center;
   display: block;
+}
+
+/* v8.1.4: Fix wrap-btn styles (override Vuetify nowrap) */
+::deep(.wrap-btn) {
+  height: auto;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+::deep(.wrap-btn .v-btn__content) {
+  white-space: normal !important;
+  line-height: 1.15;
+  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  word-break: break-word;
 }
 </style>
