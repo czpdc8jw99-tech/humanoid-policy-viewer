@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.8</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.9</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -296,14 +296,15 @@
                             density="compact"
                             hide-details
                             :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
-                            @update:modelValue="onRobotMotionModelUpdate(index, $event)"
-                          ></v-select>
-                          <template #item="{ props, item }">
-                            <v-list-item
-                              v-bind="props"
-                              @click="() => { robotMotionUpdateSuppress[index] = true; onRobotMotionChange(index, item.value); props.onClick && props.onClick(); }"
-                            ></v-list-item>
-                          </template>
+                            @update:modelValue="onRobotMotionChange(index, $event)"
+                          >
+                            <template #item="{ props, item }">
+                              <v-list-item
+                                v-bind="props"
+                                @click="onRobotMotionItemClick(index, item)"
+                              ></v-list-item>
+                            </template>
+                          </v-select>
                           <div class="text-caption" v-if="robotMotionErrors[index]" style="color: #B00020;">
                             {{ robotMotionErrors[index] }}
                           </div>
@@ -547,8 +548,6 @@ export default {
     robotMotionErrors: [''],
     // v8.1.0: 动作“待应用”队列（tracking 未就绪等原因无法切换时先排队，回到 default 后自动播放）
     robotPendingMotions: [''],
-    // v8.1.8: suppress duplicate update when item click triggers both click+update
-    robotMotionUpdateSuppress: [false],
     // v8.1.6: global motion target (UI only; stays unselected after each apply)
     globalMotionTarget: null,
     // v8.1.7: global pending label (for global controller)
@@ -708,13 +707,18 @@ export default {
     }
   },
   methods: {
-    // v8.1.8: Handle v-select model updates without double-trigger
-    onRobotMotionModelUpdate(robotIndex, motionName) {
-      if (this.robotMotionUpdateSuppress?.[robotIndex]) {
-        this.robotMotionUpdateSuppress[robotIndex] = false;
-        return;
+    // v8.1.9: Clicking the currently-selected item should restart the motion
+    _getSelectItemValue(item) {
+      // Vuetify slot "item" shape can vary (value/raw/props)
+      return item?.value ?? item?.raw?.value ?? item?.props?.value ?? item;
+    },
+    onRobotMotionItemClick(robotIndex, item) {
+      const value = this._getSelectItemValue(item);
+      if (!value) return;
+      const current = this.robotConfigsDraft?.[robotIndex]?.motion;
+      if (value === current) {
+        this.onRobotMotionChange(robotIndex, value);
       }
-      this.onRobotMotionChange(robotIndex, motionName);
     },
     // v8.1.6: Global motion controller (apply to all generated robots)
     onGlobalMotionChange(motionName) {
@@ -793,7 +797,6 @@ export default {
       this.robotPolicyErrors = Array.from({ length: desired }, (_, i) => this.robotPolicyErrors?.[i] ?? '');
       this.robotMotionErrors = Array.from({ length: desired }, (_, i) => this.robotMotionErrors?.[i] ?? '');
       this.robotPendingMotions = Array.from({ length: desired }, (_, i) => this.robotPendingMotions?.[i] ?? '');
-      this.robotMotionUpdateSuppress = Array.from({ length: desired }, (_, i) => this.robotMotionUpdateSuppress?.[i] ?? false);
     },
     // v8.1.2: Draft hints for count/position (auto-clear on revert)
     getRobotCountPendingText() {

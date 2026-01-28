@@ -1,70 +1,112 @@
-# Humanoid Policy Viewer
+# Football Robot (Web)
 
-Single-page Vue 3 + Vuetify app that runs a MuJoCo WebAssembly scene in the
-browser and drives it with an ONNX policy. The default setup loads the G1
-scene, policy, and motion clips from `public/examples`.
+Browser-based MuJoCo (WASM) multi-robot simulator driven by an ONNX policy, with
+global + per-robot motion controls and camera follow.
 
-Demos: [Humanoid Policy Viewer](https://motion-tracking.axell.top/), [GentleHumanoid Web Demo](https://gentle-humanoid.axell.top/)
+This project started from Axellwppr’s **Humanoid Policy Viewer** and has been
+extended with **multi-robot**, **per-robot policy/motion**, and a **global motion
+controller**.
 
-## Quick start
+## Demo
+
+- GitHub Pages: `https://czpdc8jw99-tech.github.io/humanoid-policy-viewer/`
+
+## Features
+
+- **MuJoCo in the browser (WASM)** + Three.js rendering
+- **ONNX Runtime Web (WASM)** policy inference
+- **Multi-robot scene generation** (draft → generate/apply)
+- **Per-robot controls**
+  - Policy selection (per robot)
+  - Motion selection (per robot)
+  - Position (X/Y) before generating
+- **Global motion controller**
+  - Select one motion to apply to **all generated robots**
+  - Switching motion: **force return to `default` → auto-play target motion**
+  - Shows a global `Pending: ...` hint while waiting
+- **Restart motion**
+  - Clicking the **currently-playing motion** can restart it (return to `default` then replay)
+- **Camera**
+  - Focus & Follow the selected robot (WASDQE cancels follow)
+- **Custom motions upload**
+  - Upload motion JSON clips from the UI
+
+## Quick start (local dev)
 
 ```bash
 npm install
 npm run dev
 ```
 
+Build:
+
+```bash
+npm run build
+```
+
 ## Project structure
 
-- `src/views/Demo.vue` - UI controls for the live demo
-- `src/simulation/main.js` - bootstraps MuJoCo, Three.js renderer, and policy loop
-- `src/simulation/mujocoUtils.js` - scene/policy loading utilities and filesystem preloading
-- `src/simulation/policyRunner.js` - ONNX inference wrapper and observation pipeline
-- `node_modules/mujoco-js/` - MuJoCo wasm runtime (npm package)
-- `public/examples/scenes/` - MJCF files + meshes staged into MuJoCo's MEMFS
-- `public/examples/checkpoints/` - policy config JSON, ONNX file, and motion clips
+- `src/views/Demo.vue`: UI (policies, motions, multi-robot controls)
+- `src/simulation/main.js`: MuJoCo + rendering + main loop
+- `src/simulation/mujocoUtils.js`: scene/policy loading utilities
+- `src/simulation/policyRunner.js`: observation pipeline + action target output
+- `src/simulation/onnxHelper.js`: ONNX Runtime Web session creation + inference
+- `public/examples/scenes/`: MJCF files + meshes staged into MuJoCo MEMFS
+- `public/examples/checkpoints/`: policy config JSON, ONNX file, motion clips
 
-## Add your own robot, policy and motions
+## Add your own robot / policy / motions (high level)
 
-1. Add your MJCF + assets.
-   - Create `public/examples/scenes/<robot>/`.
-   - Put your MJCF as `public/examples/scenes/<robot>/<robot>.xml`.
-   - Add all meshes/textures used by the MJCF into the same folder.
-   - Append every file path to `public/examples/scenes/files.json` so the
-     loader can preload them into `/working/` in the wasm filesystem.
+1. **Scene**
+   - Put MJCF + assets under `public/examples/scenes/<robot>/`
+   - Add all files into `public/examples/scenes/files.json` so they get preloaded
+2. **Policy**
+   - Put policy config JSON + ONNX under `public/examples/checkpoints/<robot>/`
+   - Ensure `policy_joint_names`, `obs_config`, PD gains, and `default_joint_pos` match your model
+3. **Motions (optional)**
+   - Provide `tracking.motions_path` index JSON and per-clip files under `motions/`
 
-2. Add your policy config and ONNX.
-   - Create `public/examples/checkpoints/<robot>/tracking_policy.json`.
-   - Place the ONNX model at `public/examples/checkpoints/<robot>/tracking_policy.onnx`.
-   - In the JSON, make sure these fields are correct:
-     - `onnx.path` points to your ONNX file (example: `./examples/checkpoints/<robot>/tracking_policy.onnx`)
-     - `policy_joint_names` matches the joint names in your MJCF actuators
-     - `obs_config` uses observation names that exist in `src/simulation/observationHelpers.js`
-     - `action_scale`, `stiffness`, `damping`, and `default_joint_pos` lengths
-       match `policy_joint_names`
-   - You need to adapt the observation helper functions in
-     `src/simulation/observationHelpers.js` if your policy uses
-     different observations than the built-in ones, and modify `src/simulation/policyRunner.js` to control the robot.
+---
 
-3. (Optional) Add tracking motions.
-   - Add an index at `public/examples/checkpoints/<robot>/motions.json`.
-   - Put per-motion clips in `public/examples/checkpoints/<robot>/motions/`.
-   - In `tracking_policy.json`, set `tracking.motions_path` to the index file.
-   - The app downloads all motion clips listed in the index when the policy loads.
-   - The index uses this shape:
-     - `format`: `tracking-motion-index-v1`
-     - `base_path`: relative path to the motions folder (example: `./motions`)
-     - `motions`: list of `{ name, file }` entries
-   - Each motion clip file must include a `default` clip overall and each clip contains:
-     - `joint_pos` (or `jointPos`): per-frame joint arrays
-     - `root_pos` (or `rootPos`): per-frame root positions
-     - `root_quat` (or `rootQuat`): per-frame root quaternions (w, x, y, z)
+# 足球机器人（网页版）
 
-4. Point the app to your robot and policy.
-   - Update `src/simulation/main.js`:
-     - `this.currentPolicyPath = './examples/checkpoints/<robot>/tracking_policy.json'`
-     - `await this.reloadScene('<robot>/<robot>.xml')`
-     - `await this.reloadPolicy('./examples/checkpoints/<robot>/tracking_policy.json')`
+基于浏览器的 MuJoCo（WASM）多机器人仿真环境，使用 ONNX 策略驱动机器人，并提供“总控 + 分控”的动作管理与相机跟随。
 
-If you want to keep multiple robots around, you can expose a selector in
-`src/views/Demo.vue` and call `demo.reloadScene(...)` and `demo.reloadPolicy(...)`
-from there.
+本项目源自 Axellwppr 的 **Humanoid Policy Viewer**，并在此基础上扩展了：
+**多机器人生成**、**每个机器人独立策略/动作**、以及**全局动作总控**。
+
+## 在线演示
+
+- GitHub Pages：`https://czpdc8jw99-tech.github.io/humanoid-policy-viewer/`
+
+## 功能概览
+
+- **浏览器内运行 MuJoCo（WASM）** + Three.js 渲染
+- **ONNX Runtime Web（WASM）** 推理
+- **多机器人场景生成**（先改草稿 → 点击生成后应用）
+- **每个机器人独立控制**
+  - 独立策略选择
+  - 独立动作选择
+  - 生成前设置 X/Y 位置
+- **全局动作总控**
+  - 一个动作控制场上 **所有已生成机器人**
+  - 切换动作规则：**先强制回 `default` → 再自动进入目标动作**
+  - UI 显示全局 `Pending: ...` 提示
+- **动作重置**
+  - 点击当前正在执行的动作，可触发“回 default 后从头再跑”
+- **相机**
+  - 聚焦并跟随指定机器人（WASDQE 自动解除跟随）
+- **自定义动作上传**
+  - UI 支持上传 motion JSON
+
+## 本地运行
+
+```bash
+npm install
+npm run dev
+```
+
+构建：
+
+```bash
+npm run build
+```
