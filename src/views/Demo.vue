@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.2</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.3</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -367,6 +367,7 @@
                 </div>
                 
                 <v-btn
+                  class="wrap-btn"
                   color="primary"
                   block
                   :disabled="state !== 1 || isGeneratingRobots"
@@ -421,7 +422,7 @@
             class="mt-2"
           >
             <v-icon icon="mdi-crosshairs-gps" class="mr-1"></v-icon>
-            Focus & Follow (WASDQE to cancel)
+            Focus & Follow
           </v-btn>
         </div>
         <div class="status-legend">
@@ -1421,25 +1422,17 @@ export default {
         disabled: name !== 'default' && !canSwitchNonDefault
       }));
     },
-    // v8.0.3: 草稿机器人 motion 列表
+    // v8.0.3: Draft robot motion list
     getRobotMotionItemsDraft(robotIndex) {
       const appliedCount = this.robotConfigs?.length || 0;
-      // v8.0.8: 单机器人模式下，机器人0使用全局 trackingState/availableMotions
       const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
+      // v8.1.3: In single-robot mode, keep robot-0 motion at default in this panel
       if (!isMultiRobot && robotIndex === 0 && appliedCount === 1) {
-        const names = this.availableMotions ?? [];
-        const state = this.trackingState ?? null;
-        const canSwitchNonDefault = !!state && state.isDefault && state.currentDone;
-        const sorted = [...names].sort((a, b) => {
-          if (a === 'default') return -1;
-          if (b === 'default') return 1;
-          return a.localeCompare(b);
-        });
-        return sorted.map((name) => ({
-          title: name,
-          value: name,
-          disabled: name !== 'default' && !canSwitchNonDefault
-        }));
+        return [{
+          title: 'default',
+          value: 'default',
+          disabled: false
+        }];
       }
 
       if (robotIndex < appliedCount) {
@@ -1709,6 +1702,21 @@ export default {
 }
 
 :deep(.back-to-default-btn .v-btn__content) {
+  white-space: normal;
+  line-height: 1.15;
+  text-align: center;
+  display: block;
+}
+
+/* v8.1.3: Allow wrapping for long button labels (e.g. generate) */
+::deep(.wrap-btn) {
+  height: auto;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+::deep(.wrap-btn .v-btn__content) {
   white-space: normal;
   line-height: 1.15;
   text-align: center;
