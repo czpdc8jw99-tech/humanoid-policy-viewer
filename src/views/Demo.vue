@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.4</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.5</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -374,7 +374,13 @@
                   @click="generateMultiRobotScene"
                 >
                   <v-icon icon="mdi-refresh" class="mr-1"></v-icon>
-                  {{ isGeneratingRobots ? 'Generating...' : 'Generate multi-robot scene' }}
+                  <template v-if="isGeneratingRobots">Generating...</template>
+                  <template v-else>
+                    <span class="wrap-btn-text">
+                      Generate multi-robot<br>
+                      scene
+                    </span>
+                  </template>
                 </v-btn>
               </v-expansion-panel-text>
             </v-expansion-panel>
@@ -856,6 +862,27 @@ export default {
       const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
       let accepted = false;
 
+      // v8.1.5: When switching during playback, force default then auto-enter the selected motion.
+      // (no red error; show pending instead)
+      const activeTracking = isMultiRobot
+        ? (this.demo.policyRunners?.[robotIndex]?.tracking ?? null)
+        : (this.demo?.policyRunner?.tracking ?? null);
+      const tsNow = activeTracking?.playbackState?.() ?? this.getRobotTrackingState?.(robotIndex) ?? null;
+      const notReadyNow = !!tsNow && (!tsNow.isDefault || !tsNow.currentDone);
+      if (motionName && motionName !== 'default' && notReadyNow) {
+        this.robotPendingMotions[robotIndex] = motionName;
+        this.robotMotionErrors[robotIndex] = '';
+        // Force return to default immediately
+        if (activeTracking) {
+          const state = isMultiRobot
+            ? this.demo.readPolicyStateForRobot?.(robotIndex)
+            : this.demo.readPolicyState?.();
+          activeTracking.requestMotion('default', state);
+        }
+        this.updateTrackingState();
+        return;
+      }
+
       if (isMultiRobot) {
         const tracking = this.demo.policyRunners?.[robotIndex]?.tracking ?? null;
         if (tracking) {
@@ -872,14 +899,9 @@ export default {
       if (!accepted) {
         const tracking = this.demo?.policyRunner?.tracking ?? this.demo?.policyRunners?.[robotIndex]?.tracking ?? null;
         const ts = tracking?.playbackState?.() ?? this.getRobotTrackingState?.(robotIndex) ?? null;
-        // v8.1.2: If motion is not finished, show warning and require default first
-        const notReady = !!ts && (!ts.isDefault || !ts.currentDone);
+        // v8.1.5: If tracking isn't ready, queue pending motion.
         const trackingNotReady = !ts || ts.available === false;
-        if (motionName && motionName !== 'default' && notReady) {
-          this.robotMotionErrors[robotIndex] = 'Motion not finished. Return to default first.';
-          this.robotPendingMotions[robotIndex] = '';
-        } else if (motionName && motionName !== 'default' && trackingNotReady) {
-          // tracking 未就绪时：用“待应用”提示（蓝色），并在 default 后自动播放
+        if (motionName && motionName !== 'default' && trackingNotReady) {
           this.robotPendingMotions[robotIndex] = motionName;
           this.robotMotionErrors[robotIndex] = '';
         } else {
@@ -1426,13 +1448,19 @@ export default {
     getRobotMotionItemsDraft(robotIndex) {
       const appliedCount = this.robotConfigs?.length || 0;
       const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
-      // v8.1.3: In single-robot mode, keep robot-0 motion at default in this panel
+      // v8.1.5: In single-robot mode, use global availableMotions for robot 0
       if (!isMultiRobot && robotIndex === 0 && appliedCount === 1) {
-        return [{
-          title: 'default',
-          value: 'default',
+        const names = this.availableMotions ?? [];
+        const sorted = [...names].sort((a, b) => {
+          if (a === 'default') return -1;
+          if (b === 'default') return 1;
+          return a.localeCompare(b);
+        });
+        return sorted.map((name) => ({
+          title: name,
+          value: name,
           disabled: false
-        }];
+        }));
       }
 
       if (robotIndex < appliedCount) {
@@ -1739,5 +1767,11 @@ export default {
   flex-wrap: wrap;
   justify-content: center;
   word-break: break-word;
+}
+
+::deep(.wrap-btn-text) {
+  display: inline-block;
+  white-space: normal !important;
+  line-height: 1.15;
 }
 </style>
