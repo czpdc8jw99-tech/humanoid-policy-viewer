@@ -296,11 +296,12 @@
                             density="compact"
                             hide-details
                             :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
+                            @update:modelValue="onRobotMotionModelUpdate(index, $event)"
                           ></v-select>
                           <template #item="{ props, item }">
                             <v-list-item
                               v-bind="props"
-                              @click="() => { onRobotMotionChange(index, item.value); props.onClick && props.onClick(); }"
+                              @click="() => { robotMotionUpdateSuppress[index] = true; onRobotMotionChange(index, item.value); props.onClick && props.onClick(); }"
                             ></v-list-item>
                           </template>
                           <div class="text-caption" v-if="robotMotionErrors[index]" style="color: #B00020;">
@@ -546,6 +547,8 @@ export default {
     robotMotionErrors: [''],
     // v8.1.0: 动作“待应用”队列（tracking 未就绪等原因无法切换时先排队，回到 default 后自动播放）
     robotPendingMotions: [''],
+    // v8.1.8: suppress duplicate update when item click triggers both click+update
+    robotMotionUpdateSuppress: [false],
     // v8.1.6: global motion target (UI only; stays unselected after each apply)
     globalMotionTarget: null,
     // v8.1.7: global pending label (for global controller)
@@ -705,6 +708,14 @@ export default {
     }
   },
   methods: {
+    // v8.1.8: Handle v-select model updates without double-trigger
+    onRobotMotionModelUpdate(robotIndex, motionName) {
+      if (this.robotMotionUpdateSuppress?.[robotIndex]) {
+        this.robotMotionUpdateSuppress[robotIndex] = false;
+        return;
+      }
+      this.onRobotMotionChange(robotIndex, motionName);
+    },
     // v8.1.6: Global motion controller (apply to all generated robots)
     onGlobalMotionChange(motionName) {
       if (!motionName || !this.demo) {
@@ -782,6 +793,7 @@ export default {
       this.robotPolicyErrors = Array.from({ length: desired }, (_, i) => this.robotPolicyErrors?.[i] ?? '');
       this.robotMotionErrors = Array.from({ length: desired }, (_, i) => this.robotMotionErrors?.[i] ?? '');
       this.robotPendingMotions = Array.from({ length: desired }, (_, i) => this.robotPendingMotions?.[i] ?? '');
+      this.robotMotionUpdateSuppress = Array.from({ length: desired }, (_, i) => this.robotMotionUpdateSuppress?.[i] ?? false);
     },
     // v8.1.2: Draft hints for count/position (auto-clear on revert)
     getRobotCountPendingText() {
@@ -1464,8 +1476,9 @@ export default {
           }
         }
       } else {
-        this.robotTrackingStates = [];
-        this.robotAvailableMotions = [];
+        // v8.1.8: single-robot mode still populates robotTrackingStates[0] for UI ("Now:" field)
+        this.robotTrackingStates = [ { ...this.trackingState } ];
+        this.robotAvailableMotions = [ Array.isArray(this.availableMotions) ? [...this.availableMotions] : [] ];
 
         // v8.1.0: 单机器人时也支持“待应用”（用于机器人卡片的 motion 下拉）
         const pending = this.robotPendingMotions?.[0] ?? '';
