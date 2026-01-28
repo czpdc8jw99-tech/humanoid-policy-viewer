@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.7</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.8</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -296,8 +296,13 @@
                             density="compact"
                             hide-details
                             :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
-                            @update:modelValue="onRobotMotionChange(index, $event)"
                           ></v-select>
+                          <template #item="{ props, item }">
+                            <v-list-item
+                              v-bind="props"
+                              @click="() => { onRobotMotionChange(index, item.value); props.onClick && props.onClick(); }"
+                            ></v-list-item>
+                          </template>
                           <div class="text-caption" v-if="robotMotionErrors[index]" style="color: #B00020;">
                             {{ robotMotionErrors[index] }}
                           </div>
