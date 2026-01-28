@@ -100,39 +100,41 @@
             rounded
             class="mt-3 motion-progress-no-animation"
           ></v-progress-linear>
-        <v-alert
-          v-if="showBackToDefault"
-          type="info"
-          variant="tonal"
-          density="compact"
-          class="mt-3"
-        >
-          Motion "{{ trackingState.currentName }}" finished. Return to the default pose before starting another clip.
-          <v-btn
-            class="back-to-default-btn"
-            color="primary"
-            block
+        <template v-if="trackingState && trackingState.available">
+          <v-alert
+            v-if="showBackToDefault"
+            type="info"
+            variant="tonal"
             density="compact"
-            @click="backToDefault"
+            class="mt-3"
           >
-            Back to default pose
-          </v-btn>
-        </v-alert>
-        <v-select
-          v-model="globalMotionTarget"
-          :items="globalMotionItems"
-          class="mt-3"
-          label="Global motion (all robots)"
-          density="compact"
-          hide-details
-          item-title="title"
-          item-value="value"
-          :disabled="state !== 1 || !trackingState?.available || isGeneratingRobots"
-          @update:modelValue="onGlobalMotionChange"
-        ></v-select>
+            Motion "{{ trackingState.currentName }}" finished. Return to the default pose before starting another clip.
+            <v-btn
+              class="back-to-default-btn"
+              color="primary"
+              block
+              density="compact"
+              @click="backToDefault"
+            >
+              Back to default pose
+            </v-btn>
+          </v-alert>
+          <v-select
+            v-model="globalMotionTarget"
+            :items="globalMotionItems"
+            class="mt-3"
+            label="Global motion (all robots)"
+            density="compact"
+            hide-details
+            item-title="title"
+            item-value="value"
+            :disabled="state !== 1 || isGeneratingRobots"
+            @update:modelValue="onGlobalMotionChange"
+          ></v-select>
+        </template>
 
         <v-alert
-          v-else-if="!trackingState.available"
+          v-else
           type="info"
           variant="tonal"
           density="compact"
