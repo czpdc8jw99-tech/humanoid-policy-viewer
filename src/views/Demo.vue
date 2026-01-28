@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.5</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.6</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -118,34 +118,18 @@
             Back to default pose
           </v-btn>
         </v-alert>
-
-        <v-alert
-          v-else-if="showMotionLockedNotice"
-          type="warning"
-          variant="tonal"
-          density="compact"
+        <v-select
+          v-model="globalMotionTarget"
+          :items="globalMotionItems"
           class="mt-3"
-        >
-          "{{ trackingState.currentName }}" is still playing. Wait until it finishes and returns to default pose before switching.
-        </v-alert>
-
-        <div v-if="showMotionSelect" class="motion-groups">
-          <div v-for="group in motionGroups" :key="group.title" class="motion-group">
-            <span class="status-name motion-group-title">{{ group.title }}</span>
-            <v-chip
-              v-for="item in group.items"
-              :key="item.value"
-              :disabled="item.disabled"
-              :color="currentMotion === item.value ? 'primary' : undefined"
-              :variant="currentMotion === item.value ? 'flat' : 'tonal'"
-              class="motion-chip"
-              size="x-small"
-              @click="onMotionChange(item.value)"
-            >
-              {{ item.title }}
-            </v-chip>
-          </div>
-        </div>
+          label="Global motion (all robots)"
+          density="compact"
+          hide-details
+          item-title="title"
+          item-value="value"
+          :disabled="state !== 1 || !trackingState?.available || isGeneratingRobots"
+          @update:modelValue="onGlobalMotionChange"
+        ></v-select>
 
         <v-alert
           v-else-if="!trackingState.available"
@@ -350,16 +334,6 @@
                               Back to default pose
                             </v-btn>
                           </v-alert>
-
-                          <v-alert
-                            v-else-if="showRobotMotionLockedNotice(index)"
-                            type="warning"
-                            variant="tonal"
-                            density="compact"
-                            class="mt-2"
-                          >
-                            "{{ getRobotTrackingState(index).currentName }}" is still playing. Wait until it finishes and returns to default pose before switching.
-                          </v-alert>
                         </v-col>
                       </v-row>
                     </v-card-text>
@@ -558,6 +532,8 @@ export default {
     robotMotionErrors: [''],
     // v8.1.0: 动作“待应用”队列（tracking 未就绪等原因无法切换时先排队，回到 default 后自动播放）
     robotPendingMotions: [''],
+    // v8.1.6: global motion target (UI only; does not auto-follow per-robot changes)
+    globalMotionTarget: 'default',
     robotTrackingStates: [],
     robotAvailableMotions: [],
     // v6.1.0: 聚焦机器人选择
@@ -697,9 +673,59 @@ export default {
         return '—';
       }
       return `${this.simStepHz.toFixed(1)} Hz`;
+    },
+    // v8.1.6: global motion dropdown items
+    globalMotionItems() {
+      const names = Array.isArray(this.availableMotions) ? this.availableMotions : [];
+      const sorted = [...names].sort((a, b) => {
+        if (a === 'default') return -1;
+        if (b === 'default') return 1;
+        return a.localeCompare(b);
+      });
+      return sorted.map((name) => ({
+        title: name,
+        value: name
+      }));
     }
   },
   methods: {
+    // v8.1.6: Global motion controller (apply to all generated robots)
+    onGlobalMotionChange(motionName) {
+      if (!motionName || !this.demo) {
+        return;
+      }
+      this.globalMotionTarget = motionName;
+
+      const appliedCount = this.robotConfigs?.length || 0;
+      if (appliedCount <= 0) {
+        return;
+      }
+
+      // Clear existing errors; pending will be shown per robot.
+      this.robotMotionErrors = (this.robotMotionErrors || []).map(() => '');
+
+      if (motionName === 'default') {
+        this.robotPendingMotions = (this.robotPendingMotions || []).map(() => '');
+        if (typeof this.demo.requestMotion === 'function') {
+          this.demo.requestMotion('default', null, true);
+        } else {
+          this.requestMotion('default');
+        }
+        this.updateTrackingState();
+        return;
+      }
+
+      // Queue target for all robots, then force default now.
+      for (let i = 0; i < appliedCount; i++) {
+        this.robotPendingMotions[i] = motionName;
+      }
+      if (typeof this.demo.requestMotion === 'function') {
+        this.demo.requestMotion('default', null, true);
+      } else {
+        this.requestMotion('default');
+      }
+      this.updateTrackingState();
+    },
     // v8.0.3: 确保草稿配置长度与草稿数量一致
     ensureDraftLength() {
       const appliedCount = this.robotConfigs?.length || 0;
@@ -873,7 +899,9 @@ export default {
         this.robotPendingMotions[robotIndex] = motionName;
         this.robotMotionErrors[robotIndex] = '';
         // Force return to default immediately
-        if (activeTracking) {
+        if (typeof this.demo.requestMotion === 'function') {
+          this.demo.requestMotion('default', robotIndex, true);
+        } else if (activeTracking) {
           const state = isMultiRobot
             ? this.demo.readPolicyStateForRobot?.(robotIndex)
             : this.demo.readPolicyState?.();
@@ -971,6 +999,8 @@ export default {
         this.demo.params.paused = false;
         this.reapplyCustomMotions();
         this.availableMotions = this.getAvailableMotions();
+        // v8.1.6: keep global motion selector independent from per-robot state
+        this.globalMotionTarget = 'default';
         this.currentMotion = this.demo.params.current_motion ?? this.availableMotions[0] ?? null;
         this.startTrackingPoll();
         this.renderScale = this.demo.renderScale ?? this.renderScale;
@@ -1241,6 +1271,8 @@ export default {
         this.policyLabel = selected.policyPath?.split('/').pop() ?? this.policyLabel;
         this.reapplyCustomMotions();
         this.availableMotions = this.getAvailableMotions();
+        // v8.1.6: reset global motion selector on policy change
+        this.globalMotionTarget = 'default';
         this.currentMotion = this.demo.params.current_motion ?? this.availableMotions[0] ?? null;
         this.updateTrackingState();
       } catch (error) {
@@ -1431,8 +1463,6 @@ export default {
     },
     getRobotMotionItems(robotIndex) {
       const names = this.robotAvailableMotions?.[robotIndex] ?? [];
-      const state = this.getRobotTrackingState(robotIndex);
-      const canSwitchNonDefault = !!state && state.isDefault && state.currentDone;
       const sorted = [...names].sort((a, b) => {
         if (a === 'default') return -1;
         if (b === 'default') return 1;
@@ -1441,7 +1471,8 @@ export default {
       return sorted.map((name) => ({
         title: name,
         value: name,
-        disabled: name !== 'default' && !canSwitchNonDefault
+        // v8.1.6: always selectable; switching queues and forces default if needed
+        disabled: false
       }));
     },
     // v8.0.3: Draft robot motion list
