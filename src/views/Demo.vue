@@ -27,8 +27,8 @@
   <div v-if="!isSmallScreen" class="controls">
     <v-card class="controls-card">
       <v-card-title>
-        General Tracking Demo
-        <v-chip size="small" color="success" class="ml-2">v8.1.1</v-chip>
+        Football Robot
+        <v-chip size="small" color="success" class="ml-2">v8.1.2</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -199,19 +199,19 @@
 
         <v-divider class="my-2"/>
         
-        <!-- 多机器人配置面板 - v4.0 -->
+        <!-- Multi-robot setup -->
         <div class="multi-robot-config mt-2">
           <v-expansion-panels>
             <v-expansion-panel>
               <v-expansion-panel-title>
                 <v-icon icon="mdi-robot" class="mr-2"></v-icon>
-                多机器人配置 (最多11个)
+                Multi-robot setup (up to 11)
               </v-expansion-panel-title>
               <v-expansion-panel-text>
                 <v-text-field
                   v-model.number="robotCountDraft"
                   type="number"
-                  label="机器人数量（待应用）"
+                  label="Robot count"
                   min="1"
                   max="11"
                   density="compact"
@@ -221,7 +221,7 @@
                 ></v-text-field>
 
                 <div class="text-caption mb-2">
-                  当前场景机器人数量：{{ robotConfigs.length }}；待应用数量：{{ robotCountDraft }}
+                  In scene: {{ robotConfigs.length }}; Draft: {{ robotCountDraft }}
                 </div>
                 <div
                   class="text-caption mb-2"
@@ -234,9 +234,9 @@
                 <div v-for="(robot, index) in robotConfigsDraft" :key="index" class="mb-3">
                   <v-card variant="outlined" density="compact">
                     <v-card-title class="text-caption">
-                      机器人 {{ index + 1 }}
-                      <span v-if="index >= robotConfigs.length" class="text-caption" style="opacity: 0.75;">（待生成）</span>
-                      <span v-else-if="index >= robotCountDraft" class="text-caption" style="opacity: 0.75;">（将删除）</span>
+                      Robot {{ index + 1 }}
+                      <span v-if="index >= robotConfigs.length" class="text-caption" style="opacity: 0.75;">(pending)</span>
+                      <span v-else-if="index >= robotCountDraft" class="text-caption" style="opacity: 0.75;">(will remove)</span>
                     </v-card-title>
                     <v-card-text class="py-2">
                       <v-row dense>
@@ -244,7 +244,7 @@
                           <v-text-field
                             v-model.number="robot.x"
                             type="number"
-                            label="X位置"
+                            label="X"
                             density="compact"
                             hide-details
                             step="0.5"
@@ -257,7 +257,7 @@
                           <v-text-field
                             v-model.number="robot.y"
                             type="number"
-                            label="Y位置"
+                            label="Y"
                             density="compact"
                             hide-details
                             step="0.5"
@@ -279,7 +279,7 @@
                           <v-select
                             v-model="robot.policyPath"
                             :items="policyPathItems"
-                            label="策略（每个机器人可不同）"
+                            label="Policy (per robot)"
                             density="compact"
                             hide-details
                             :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
@@ -289,9 +289,9 @@
                             {{ robotPolicyErrors[index] }}
                           </div>
                           <div class="text-caption" v-else>
-                            当前：{{ (robot.policyPath || '').split('/').pop() || '—' }}
-                            <span v-if="robotPolicyLoading[index]">（加载中…）</span>
-                            <span v-if="index >= robotConfigs.length">（生成后生效）</span>
+                            Current: {{ (robot.policyPath || '').split('/').pop() || '—' }}
+                            <span v-if="robotPolicyLoading[index]">(loading...)</span>
+                            <span v-if="index >= robotConfigs.length">(applies after generate)</span>
                           </div>
                         </v-col>
 
@@ -299,7 +299,7 @@
                           <v-select
                             v-model="robot.motion"
                             :items="getRobotMotionItemsDraft(index)"
-                            label="动作（每个机器人可不同）"
+                            label="Motion (per robot)"
                             density="compact"
                             hide-details
                             :disabled="state !== 1 || isGeneratingRobots || !!robotPolicyLoading[index]"
@@ -309,16 +309,16 @@
                             {{ robotMotionErrors[index] }}
                           </div>
                           <div class="text-caption" v-else>
-                            当前：{{ getRobotTrackingState(index).currentName || '—' }}
-                            <span v-if="!getRobotTrackingState(index).currentDone">（播放中…）</span>
-                            <span v-if="index >= robotConfigs.length">（生成后生效）</span>
+                            Now: {{ getRobotTrackingState(index).currentName || '—' }}
+                            <span v-if="!getRobotTrackingState(index).currentDone">(playing...)</span>
+                            <span v-if="index >= robotConfigs.length">(applies after generate)</span>
                           </div>
                           <div
                             class="text-caption"
                             v-if="index < robotConfigs.length && robotPendingMotions[index]"
                             style="color: #0D47A1;"
                           >
-                            待应用：{{ robotPendingMotions[index] }}（回到 default 后自动播放）
+                            Pending: {{ robotPendingMotions[index] }} (auto-play after returning to default)
                           </div>
                         </v-col>
 
@@ -373,7 +373,7 @@
                   @click="generateMultiRobotScene"
                 >
                   <v-icon icon="mdi-refresh" class="mr-1"></v-icon>
-                  {{ isGeneratingRobots ? '生成中...' : '生成多机器人场景' }}
+                  {{ isGeneratingRobots ? 'Generating...' : 'Generate multi-robot scene' }}
                 </v-btn>
               </v-expansion-panel-text>
             </v-expansion-panel>
@@ -394,19 +394,19 @@
               variant="text"
               @click="coordinateWarning.show = false"
             >
-              关闭
+              Close
             </v-btn>
           </template>
         </v-snackbar>
         
         <v-divider class="my-2"/>
         <div class="status-legend mt-2">
-          <span class="status-name mb-2">聚焦到机器人</span>
+          <span class="status-name mb-2">Camera</span>
           <v-select
             v-model.number="selectedRobotIndex"
             :items="robotIndexItems"
             class="mt-2"
-            label="选择机器人"
+            label="Robot"
             density="compact"
             hide-details
             :disabled="state !== 1 || robotConfigs.length < 1"
@@ -421,7 +421,7 @@
             class="mt-2"
           >
             <v-icon icon="mdi-crosshairs-gps" class="mr-1"></v-icon>
-            聚焦并跟随（按 WASDQE 自动解除）
+            Focus & Follow (WASDQE to cancel)
           </v-btn>
         </div>
         <div class="status-legend">
@@ -573,7 +573,7 @@ export default {
       const count = this.robotConfigs?.length || 1;
       for (let i = 0; i < count; i++) {
         items.push({
-          title: `机器人 ${i + 1}`,
+          title: `Robot ${i + 1}`,
           value: i
         });
       }
@@ -723,7 +723,7 @@ export default {
       this.robotMotionErrors = Array.from({ length: desired }, (_, i) => this.robotMotionErrors?.[i] ?? '');
       this.robotPendingMotions = Array.from({ length: desired }, (_, i) => this.robotPendingMotions?.[i] ?? '');
     },
-    // v8.1.1: 数量/位置的“待应用”提示（改回原值会自动消失）
+    // v8.1.2: Draft hints for count/position (auto-clear on revert)
     getRobotCountPendingText() {
       const applied = this.robotConfigs?.length || 0;
       const draft = Math.max(1, Math.min(11, this.robotCountDraft || 1));
@@ -731,9 +731,9 @@ export default {
         return '';
       }
       if (draft > applied) {
-        return `待应用：将新增 ${draft - applied} 个机器人（点击“生成多机器人场景”生效）`;
+        return `Pending: will add ${draft - applied} robot(s) (click "Generate multi-robot scene" to apply)`;
       }
-      return `待应用：将删除 ${applied - draft} 个机器人（点击“生成多机器人场景”生效）`;
+      return `Pending: will remove ${applied - draft} robot(s) (click "Generate multi-robot scene" to apply)`;
     },
     getRobotPositionPendingText(robotIndex) {
       const appliedCount = this.robotConfigs?.length || 0;
@@ -750,7 +750,7 @@ export default {
       if (robotIndex >= appliedCount) {
         const dx = Number(draft.x ?? 0);
         const dy = Number(draft.y ?? 0);
-        return `待应用：位置为 X=${dx}, Y=${dy}（生成后生效）`;
+        return `Pending: position X=${dx}, Y=${dy} (applies after generate)`;
       }
       const applied = this.robotConfigs?.[robotIndex] ?? null;
       if (!applied) {
@@ -763,7 +763,7 @@ export default {
       if (dx === ax && dy === ay) {
         return '';
       }
-      return `待应用：位置将变为 X=${dx}, Y=${dy}（生成后生效）`;
+      return `Pending: position will be X=${dx}, Y=${dy} (applies after generate)`;
     },
     // v7.2.1: 根据当前策略选项获取 policyPath（用于 robotConfigs 默认值/补全）
     getSelectedPolicyPath() {
@@ -780,7 +780,7 @@ export default {
       if (this.robotPendingMotions?.[robotIndex]) {
         this.robotPendingMotions[robotIndex] = '';
       }
-      if (this.robotMotionErrors?.[robotIndex] === '当前动作未结束，请先回到 default') {
+      if (this.robotMotionErrors?.[robotIndex] === 'Motion not finished. Return to default first.') {
         this.robotMotionErrors[robotIndex] = '';
       }
 
@@ -820,7 +820,7 @@ export default {
         this.updateTrackingState();
         this.demo.params.paused = wasPaused;
       } catch (e) {
-        const msg = e?.message || e?.toString?.() || '策略加载失败';
+        const msg = e?.message || e?.toString?.() || 'Policy load failed';
         this.robotPolicyErrors[robotIndex] = msg;
         console.error(e);
       } finally {
@@ -871,18 +871,18 @@ export default {
       if (!accepted) {
         const tracking = this.demo?.policyRunner?.tracking ?? this.demo?.policyRunners?.[robotIndex]?.tracking ?? null;
         const ts = tracking?.playbackState?.() ?? this.getRobotTrackingState?.(robotIndex) ?? null;
-        // v8.1.1: 若当前动作未结束（未回到 default），保持旧逻辑：红色提示回到 default，不加入“待应用”
+        // v8.1.2: If motion is not finished, show warning and require default first
         const notReady = !!ts && (!ts.isDefault || !ts.currentDone);
         const trackingNotReady = !ts || ts.available === false;
         if (motionName && motionName !== 'default' && notReady) {
-          this.robotMotionErrors[robotIndex] = '当前动作未结束，请先回到 default';
+          this.robotMotionErrors[robotIndex] = 'Motion not finished. Return to default first.';
           this.robotPendingMotions[robotIndex] = '';
         } else if (motionName && motionName !== 'default' && trackingNotReady) {
           // tracking 未就绪时：用“待应用”提示（蓝色），并在 default 后自动播放
           this.robotPendingMotions[robotIndex] = motionName;
           this.robotMotionErrors[robotIndex] = '';
         } else {
-          this.robotMotionErrors[robotIndex] = '动作切换被拒绝（动作名不存在或不允许切换）';
+          this.robotMotionErrors[robotIndex] = 'Motion switch rejected (unknown motion or not allowed).';
         }
       } else {
         // 切换成功：清空待应用
@@ -1095,13 +1095,13 @@ export default {
       // 检查并修正超出范围的值
       if (oldValue === null || oldValue === undefined || isNaN(oldValue)) {
         newValue = 0;
-        message = `机器人 ${robotIndex + 1} 的${axis.toUpperCase()}坐标无效，已设置为0`;
+        message = `Robot ${robotIndex + 1} ${axis.toUpperCase()} is invalid; set to 0.`;
       } else if (oldValue < limit.min) {
         newValue = limit.min;
-        message = `机器人 ${robotIndex + 1} 的${axis.toUpperCase()}坐标 ${oldValue} 小于最小值 ${limit.min}，已自动调整为 ${limit.min}`;
+        message = `Robot ${robotIndex + 1} ${axis.toUpperCase()} ${oldValue} < ${limit.min}; clamped to ${limit.min}.`;
       } else if (oldValue > limit.max) {
         newValue = limit.max;
-        message = `机器人 ${robotIndex + 1} 的${axis.toUpperCase()}坐标 ${oldValue} 大于最大值 ${limit.max}，已自动调整为 ${limit.max}`;
+        message = `Robot ${robotIndex + 1} ${axis.toUpperCase()} ${oldValue} > ${limit.max}; clamped to ${limit.max}.`;
       }
       
       // 如果值被修正了，更新并显示提示
@@ -1167,9 +1167,9 @@ export default {
         // 重新加载策略（为每个机器人）
         await this.onPolicyChange(this.currentPolicy);
       } catch (error) {
-        console.error('生成多机器人场景失败:', error);
-        const errorMsg = error?.message || error?.toString() || '未知错误';
-        alert('生成多机器人场景失败: ' + errorMsg);
+        console.error('Failed to generate multi-robot scene:', error);
+        const errorMsg = error?.message || error?.toString() || 'Unknown error';
+        alert('Failed to generate multi-robot scene: ' + errorMsg);
       } finally {
         this.isGeneratingRobots = false;
       }
@@ -1197,7 +1197,7 @@ export default {
       // v8.1.0: 切换策略会改变可用动作/状态，先清空“待应用”与旧提示
       this.robotPendingMotions = (this.robotPendingMotions || []).map(() => '');
       this.robotMotionErrors = (this.robotMotionErrors || []).map((msg) =>
-        msg === '当前动作未结束，请先回到 default' ? '' : msg
+        msg === 'Motion not finished. Return to default first.' ? '' : msg
       );
       const selected = this.policies.find((policy) => policy.value === value);
       if (!selected) {
@@ -1348,7 +1348,7 @@ export default {
           const pending = this.robotPendingMotions?.[i] ?? '';
           const st = states[i];
           // v8.1.0: default 阶段已完成时，强制清除旧的“未结束”提示
-          if (st && st.available && st.isDefault && st.currentDone && this.robotMotionErrors?.[i] === '当前动作未结束，请先回到 default') {
+          if (st && st.available && st.isDefault && st.currentDone && this.robotMotionErrors?.[i] === 'Motion not finished. Return to default first.') {
             this.robotMotionErrors[i] = '';
           }
           if (!pending) continue;
@@ -1365,7 +1365,7 @@ export default {
           } else {
             // 避免无限重试：一次失败就清空 pending，并给出错误提示
             this.robotPendingMotions[i] = '';
-            this.robotMotionErrors[i] = '待应用动作播放失败（动作名不存在或不允许切换）';
+            this.robotMotionErrors[i] = 'Pending motion failed to play (unknown motion or not allowed).';
           }
         }
       } else {
@@ -1375,7 +1375,7 @@ export default {
         // v8.1.0: 单机器人时也支持“待应用”（用于机器人卡片的 motion 下拉）
         const pending = this.robotPendingMotions?.[0] ?? '';
         const st = this.trackingState;
-        if (st && st.available && st.isDefault && st.currentDone && this.robotMotionErrors?.[0] === '当前动作未结束，请先回到 default') {
+        if (st && st.available && st.isDefault && st.currentDone && this.robotMotionErrors?.[0] === 'Motion not finished. Return to default first.') {
           this.robotMotionErrors[0] = '';
         }
         if (pending && st && st.available && st.isDefault && st.currentDone) {
@@ -1385,7 +1385,7 @@ export default {
             this.robotMotionErrors[0] = '';
           } else {
             this.robotPendingMotions[0] = '';
-            this.robotMotionErrors[0] = '待应用动作播放失败（动作名不存在或不允许切换）';
+            this.robotMotionErrors[0] = 'Pending motion failed to play (unknown motion or not allowed).';
           }
         }
       }
@@ -1445,7 +1445,7 @@ export default {
       if (robotIndex < appliedCount) {
         return this.getRobotMotionItems(robotIndex);
       }
-      // v8.1.1: 待生成的机器人生成后会强制回到 default，因此只允许选择 default
+      // v8.1.2: Pending robots start from default; only allow default
       return [{
         title: 'default',
         value: 'default',
