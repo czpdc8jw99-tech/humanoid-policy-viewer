@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.1.6</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v8.1.7</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -131,6 +131,13 @@
             :disabled="state !== 1 || isGeneratingRobots"
             @update:modelValue="onGlobalMotionChange"
           ></v-select>
+          <div
+            v-if="globalPendingMotion"
+            class="text-caption mt-1"
+            style="color: #0D47A1;"
+          >
+            Pending: {{ globalPendingMotion }} (auto-play after returning to default)
+          </div>
         </template>
 
         <v-alert
@@ -534,8 +541,10 @@ export default {
     robotMotionErrors: [''],
     // v8.1.0: 动作“待应用”队列（tracking 未就绪等原因无法切换时先排队，回到 default 后自动播放）
     robotPendingMotions: [''],
-    // v8.1.6: global motion target (UI only; does not auto-follow per-robot changes)
-    globalMotionTarget: 'default',
+    // v8.1.6: global motion target (UI only; stays unselected after each apply)
+    globalMotionTarget: null,
+    // v8.1.7: global pending label (for global controller)
+    globalPendingMotion: '',
     robotTrackingStates: [],
     robotAvailableMotions: [],
     // v6.1.0: 聚焦机器人选择
@@ -696,7 +705,9 @@ export default {
       if (!motionName || !this.demo) {
         return;
       }
-      this.globalMotionTarget = motionName;
+      // v8.1.7: keep the global selector "unselected" so the user can re-trigger the same motion
+      this.globalMotionTarget = null;
+      this.globalPendingMotion = motionName === 'default' ? '' : motionName;
 
       const appliedCount = this.robotConfigs?.length || 0;
       if (appliedCount <= 0) {
@@ -708,6 +719,12 @@ export default {
 
       if (motionName === 'default') {
         this.robotPendingMotions = (this.robotPendingMotions || []).map(() => '');
+        // Sync dropdowns to default
+        for (let i = 0; i < appliedCount; i++) {
+          if (this.robotConfigsDraft?.[i]) {
+            this.robotConfigsDraft[i].motion = 'default';
+          }
+        }
         if (typeof this.demo.requestMotion === 'function') {
           this.demo.requestMotion('default', null, true);
         } else {
@@ -720,6 +737,9 @@ export default {
       // Queue target for all robots, then force default now.
       for (let i = 0; i < appliedCount; i++) {
         this.robotPendingMotions[i] = motionName;
+        if (this.robotConfigsDraft?.[i]) {
+          this.robotConfigsDraft[i].motion = motionName;
+        }
       }
       if (typeof this.demo.requestMotion === 'function') {
         this.demo.requestMotion('default', null, true);
@@ -868,6 +888,10 @@ export default {
       if (!motionName) {
         return;
       }
+      // v8.1.7: per-robot override clears global pending label (avoid misleading UI)
+      if (this.globalPendingMotion && this.globalPendingMotion !== motionName) {
+        this.globalPendingMotion = '';
+      }
       if (this.robotConfigsDraft?.[robotIndex]) {
         this.robotConfigsDraft[robotIndex].motion = motionName;
       }
@@ -1002,7 +1026,8 @@ export default {
         this.reapplyCustomMotions();
         this.availableMotions = this.getAvailableMotions();
         // v8.1.6: keep global motion selector independent from per-robot state
-        this.globalMotionTarget = 'default';
+        this.globalMotionTarget = null;
+        this.globalPendingMotion = '';
         this.currentMotion = this.demo.params.current_motion ?? this.availableMotions[0] ?? null;
         this.startTrackingPoll();
         this.renderScale = this.demo.renderScale ?? this.renderScale;
@@ -1274,7 +1299,8 @@ export default {
         this.reapplyCustomMotions();
         this.availableMotions = this.getAvailableMotions();
         // v8.1.6: reset global motion selector on policy change
-        this.globalMotionTarget = 'default';
+        this.globalMotionTarget = null;
+        this.globalPendingMotion = '';
         this.currentMotion = this.demo.params.current_motion ?? this.availableMotions[0] ?? null;
         this.updateTrackingState();
       } catch (error) {
@@ -1423,6 +1449,13 @@ export default {
             // 避免无限重试：一次失败就清空 pending，并给出错误提示
             this.robotPendingMotions[i] = '';
             this.robotMotionErrors[i] = 'Pending motion failed to play (unknown motion or not allowed).';
+          }
+        }
+        // v8.1.7: clear global pending label once all robots finished applying it
+        if (this.globalPendingMotion) {
+          const stillPending = (this.robotPendingMotions || []).some((m) => m === this.globalPendingMotion);
+          if (!stillPending) {
+            this.globalPendingMotion = '';
           }
         }
       } else {
