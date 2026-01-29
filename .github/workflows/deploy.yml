@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.11: Remove tanh squash - original policy doesn't use tanh)"
+name: "Deploy to GitHub Pages (v9.0.12: Restore tanh squash - v9.0.10 was working correctly)"
 
 on:
   push:

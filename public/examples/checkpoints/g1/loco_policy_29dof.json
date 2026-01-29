@@ -50,6 +50,7 @@
   ],
   "action_scale": 0.25,
   "action_clip": 100.0,
+  "action_squash": "tanh",
   "stiffness": [
     200, 200, 200,
     150, 150, 200,
