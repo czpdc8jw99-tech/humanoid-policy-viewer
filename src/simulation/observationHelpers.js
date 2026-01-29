@@ -81,6 +81,42 @@ class JointPosRel {
     const q = state?.jointPos ?? null;
     const q0 = this.policy?.defaultJointPos ?? null;
     const s = this.scale;
+    
+    // Debug: Log raw joint positions and default values for right leg joints
+    if (!this._debugLogged && q && q0) {
+      const rightLegIndices = [1, 4, 7, 10, 14, 18]; // right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee, right_ankle_pitch, right_ankle_roll
+      const policyJointNames = this.policy?.policyJointNames ?? [];
+      console.log('=== [JointPosRel Debug] Raw joint positions and defaults ===');
+      rightLegIndices.forEach(idx => {
+        const qi = q[idx] ?? 0.0;
+        const q0i = q0[idx] ?? 0.0;
+        const posRel = s * (qi - q0i);
+        console.log(`  [${idx}] ${policyJointNames[idx] || 'unknown'}:`, {
+          currentPos: qi,
+          defaultPos: q0i,
+          diff: qi - q0i,
+          posRel: posRel,
+          scale: s
+        });
+      });
+      // Also log left leg for comparison
+      const leftLegIndices = [0, 3, 6, 9, 13, 17];
+      console.log('=== [JointPosRel Debug] Left leg for comparison ===');
+      leftLegIndices.forEach(idx => {
+        const qi = q[idx] ?? 0.0;
+        const q0i = q0[idx] ?? 0.0;
+        const posRel = s * (qi - q0i);
+        console.log(`  [${idx}] ${policyJointNames[idx] || 'unknown'}:`, {
+          currentPos: qi,
+          defaultPos: q0i,
+          diff: qi - q0i,
+          posRel: posRel,
+          scale: s
+        });
+      });
+      this._debugLogged = true;
+    }
+    
     for (let i = 0; i < n; i++) {
       const qi = q?.[i] ?? 0.0;
       const q0i = q0?.[i] ?? 0.0;

@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.3: Add observation vector debug logs for left/right leg comparison)"
+name: "Deploy to GitHub Pages (v9.0.4: Add debug logs for raw joint positions and defaults in JointPosRel)"
 
 on:
   push:
