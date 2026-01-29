@@ -98,11 +98,14 @@ export class PolicyRunner {
         this.tracking.advance();
       }
 
+      // Build observation vector (PrevActions.update() will be called AFTER inference)
       const obsForPolicy = new Float32Array(this.numObs);
       let offset = 0;
       const obsDebug = [];
       for (const obs of this.obsModules) {
-        if (typeof obs.update === 'function') {
+        // Note: PrevActions.update() is called AFTER inference to use current action
+        // Only call update for non-PrevActions modules here
+        if (typeof obs.update === 'function' && obs.constructor.name !== 'PrevActions') {
           obs.update(state);
         }
         const obsValue = obs.compute(state);
@@ -146,6 +149,14 @@ export class PolicyRunner {
         const value = action[i];
         const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
         this.lastActions[i] = clamped;
+      }
+
+      // Update PrevActions AFTER inference and lastActions update
+      // This ensures PrevActions uses the current action for the next inference
+      for (const obs of this.obsModules) {
+        if (obs.constructor.name === 'PrevActions' && typeof obs.update === 'function') {
+          obs.update(state);
+        }
       }
 
       const target = new Float32Array(this.numActions);
