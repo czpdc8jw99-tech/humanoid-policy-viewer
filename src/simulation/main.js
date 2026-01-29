@@ -625,6 +625,37 @@ export class MuJoCoDemo {
             this.policyRunner.setCommand?.(this.cmd);
             this.actionTarget = await this.policyRunner.step(state);
             actionTargets = [this.actionTarget]; // 保持数组格式一致
+            
+            // Debug: Log action values immediately after inference
+            if (this._actionValueLogged === undefined) {
+              this._actionValueLogged = false;
+            }
+            if (!this._actionValueLogged && this.actionTarget) {
+              const isLocoPolicy = this.currentPolicyPath && (
+                this.currentPolicyPath.includes('loco') || 
+                this.currentPolicyPath.includes('Loco')
+              );
+              if (isLocoPolicy) {
+                const leftLegIndices = [0, 3, 6, 9, 13, 17];
+                const rightLegIndices = [1, 4, 7, 10, 14, 18];
+                console.log('=== [Action Debug] After inference - Left leg ===', 
+                  leftLegIndices.map(idx => ({
+                    idx,
+                    joint: this.policyJointNames ? this.policyJointNames[idx] : 'unknown',
+                    target: this.actionTarget[idx]
+                  }))
+                );
+                console.log('=== [Action Debug] After inference - Right leg ===', 
+                  rightLegIndices.map(idx => ({
+                    idx,
+                    joint: this.policyJointNames ? this.policyJointNames[idx] : 'unknown',
+                    target: this.actionTarget[idx]
+                  }))
+                );
+                console.log('=== [Action Debug] Full actionTarget array ===', Array.from(this.actionTarget));
+                this._actionValueLogged = true;
+              }
+            }
           } catch (e) {
             console.error('Inference error in main loop:', e);
             this.alive = false;
@@ -715,6 +746,44 @@ export class MuJoCoDemo {
               }
             } else {
               // 单机器人模式（原有逻辑）
+              // Debug: Log action values for loco policy (first few steps only)
+              if (this._actionValueLogged === undefined) {
+                this._actionValueLogged = false;
+              }
+              if (!this._actionValueLogged) {
+                const isLocoPolicy = this.currentPolicyPath && (
+                  this.currentPolicyPath.includes('loco') || 
+                  this.currentPolicyPath.includes('Loco')
+                );
+                if (isLocoPolicy) {
+                  const leftLegIndices = [0, 3, 6, 9, 13, 17]; // left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee, left_ankle_pitch, left_ankle_roll
+                  const rightLegIndices = [1, 4, 7, 10, 14, 18]; // right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee, right_ankle_pitch, right_ankle_roll
+                  const leftLegActions = leftLegIndices.map(idx => ({
+                    policyIdx: idx,
+                    jointName: this.policyJointNames ? this.policyJointNames[idx] : 'unknown',
+                    actionValue: this.actionTarget ? this.actionTarget[idx] : null,
+                    actuatorIdx: this.ctrl_adr_policy ? this.ctrl_adr_policy[idx] : -1,
+                    targetJpos: this.actionTarget ? this.actionTarget[idx] : 0.0,
+                    currentJpos: this.simulation && this.qpos_adr_policy ? this.simulation.qpos[this.qpos_adr_policy[idx]] : 0.0,
+                    kp: this.kpPolicy ? this.kpPolicy[idx] : 0.0
+                  }));
+                  const rightLegActions = rightLegIndices.map(idx => ({
+                    policyIdx: idx,
+                    jointName: this.policyJointNames ? this.policyJointNames[idx] : 'unknown',
+                    actionValue: this.actionTarget ? this.actionTarget[idx] : null,
+                    actuatorIdx: this.ctrl_adr_policy ? this.ctrl_adr_policy[idx] : -1,
+                    targetJpos: this.actionTarget ? this.actionTarget[idx] : 0.0,
+                    currentJpos: this.simulation && this.qpos_adr_policy ? this.simulation.qpos[this.qpos_adr_policy[idx]] : 0.0,
+                    kp: this.kpPolicy ? this.kpPolicy[idx] : 0.0
+                  }));
+                  console.log('=== [Action Debug] Left leg actions ===', leftLegActions);
+                  console.log('=== [Action Debug] Right leg actions ===', rightLegActions);
+                  console.log('=== [Action Debug] Action target array (first 20) ===', 
+                    this.actionTarget ? Array.from(this.actionTarget.slice(0, 20)) : 'null');
+                  this._actionValueLogged = true;
+                }
+              }
+              
               for (let i = 0; i < this.numActions; i++) {
                 const qpos_adr = this.qpos_adr_policy[i];
                 const qvel_adr = this.qvel_adr_policy[i];

@@ -134,6 +134,12 @@ export class PolicyRunner {
       if (!action || action.length !== this.numActions) {
         throw new Error('PolicyRunner received invalid action output');
       }
+      
+      // Simple debug: always log first action value to verify code is running
+      if (this._firstActionLogged === undefined) {
+        console.log('=== [PolicyRunner] First inference - action[0] =', action[0], 'action[1] =', action[1], '===');
+        this._firstActionLogged = true;
+      }
       // Debug log for step 1 verification (first inference only)
       if (!this._inferenceLogged) {
         console.log('[PolicyRunner] Inference successful:', {
@@ -149,6 +155,33 @@ export class PolicyRunner {
         const value = action[i];
         const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
         this.lastActions[i] = clamped;
+      }
+      
+      // Debug: Log raw action values for left/right leg comparison (first inference only)
+      if (this._rawActionLogged === undefined) {
+        this._rawActionLogged = false;
+      }
+      if (!this._rawActionLogged) {
+        const leftLegIndices = [0, 3, 6, 9, 13, 17]; // left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee, left_ankle_pitch, left_ankle_roll
+        const rightLegIndices = [1, 4, 7, 10, 14, 18]; // right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee, right_ankle_pitch, right_ankle_roll
+        const leftLegRaw = leftLegIndices.map(idx => ({
+          policyIdx: idx,
+          jointName: this.policyJointNames[idx],
+          rawAction: action[idx],
+          clampedAction: this.lastActions[idx],
+          scaledTarget: this.defaultJointPos[idx] + this.actionScale[idx] * this.lastActions[idx]
+        }));
+        const rightLegRaw = rightLegIndices.map(idx => ({
+          policyIdx: idx,
+          jointName: this.policyJointNames[idx],
+          rawAction: action[idx],
+          clampedAction: this.lastActions[idx],
+          scaledTarget: this.defaultJointPos[idx] + this.actionScale[idx] * this.lastActions[idx]
+        }));
+        console.log('=== [PolicyRunner Debug] Raw action values - Left leg ===', leftLegRaw);
+        console.log('=== [PolicyRunner Debug] Raw action values - Right leg ===', rightLegRaw);
+        console.log('=== [PolicyRunner Debug] Full raw action array ===', Array.from(action));
+        this._rawActionLogged = true;
       }
 
       // Update PrevActions AFTER inference and lastActions update
