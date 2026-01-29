@@ -116,12 +116,75 @@ export class PolicyRunner {
       }
       // Debug log for step 1 verification (first few steps only)
       if (!this._obsLogged) {
+        // Extract joint positions and velocities from observation vector
+        // Observation order: RootAngVelB(3) + ProjectedGravityB(3) + Command(3) + JointPosRel(29) + JointVel(29) + PrevActions(29)
+        const rootAngVel = obsForPolicy.slice(0, 3);
+        const gravity = obsForPolicy.slice(3, 6);
+        const command = obsForPolicy.slice(6, 9);
+        const jointPosRel = obsForPolicy.slice(9, 38); // 29 joints
+        const jointVel = obsForPolicy.slice(38, 67); // 29 joints
+        const prevActions = obsForPolicy.slice(67, 96); // 29 joints
+        
+        // Left leg indices: 0, 3, 6, 9, 13, 17
+        // Right leg indices: 1, 4, 7, 10, 14, 18
+        const leftLegIndices = [0, 3, 6, 9, 13, 17];
+        const rightLegIndices = [1, 4, 7, 10, 14, 18];
+        
         console.log('[PolicyRunner] Observation vector built:', {
           totalSize: obsForPolicy.length,
           expectedSize: this.numObs,
           components: obsDebug,
-          commandInObs: obsForPolicy.slice(6, 9) // Command should be at indices 6-8 (after RootAngVelB:3 + ProjectedGravityB:3)
+          commandInObs: command
         });
+        
+        console.log('=== [Observation Debug] Left leg joint positions (relative) ===', 
+          leftLegIndices.map(idx => ({
+            idx,
+            joint: this.policyJointNames[idx],
+            posRel: jointPosRel[idx]
+          }))
+        );
+        
+        console.log('=== [Observation Debug] Right leg joint positions (relative) ===', 
+          rightLegIndices.map(idx => ({
+            idx,
+            joint: this.policyJointNames[idx],
+            posRel: jointPosRel[idx]
+          }))
+        );
+        
+        console.log('=== [Observation Debug] Left leg joint velocities ===', 
+          leftLegIndices.map(idx => ({
+            idx,
+            joint: this.policyJointNames[idx],
+            vel: jointVel[idx]
+          }))
+        );
+        
+        console.log('=== [Observation Debug] Right leg joint velocities ===', 
+          rightLegIndices.map(idx => ({
+            idx,
+            joint: this.policyJointNames[idx],
+            vel: jointVel[idx]
+          }))
+        );
+        
+        console.log('=== [Observation Debug] Left leg previous actions ===', 
+          leftLegIndices.map(idx => ({
+            idx,
+            joint: this.policyJointNames[idx],
+            prevAction: prevActions[idx]
+          }))
+        );
+        
+        console.log('=== [Observation Debug] Right leg previous actions ===', 
+          rightLegIndices.map(idx => ({
+            idx,
+            joint: this.policyJointNames[idx],
+            prevAction: prevActions[idx]
+          }))
+        );
+        
         this._obsLogged = true;
       }
 
