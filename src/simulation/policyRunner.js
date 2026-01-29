@@ -23,6 +23,7 @@ export class PolicyRunner {
     this.inputDict = {};
     this.isInferencing = false;
     this.lastActions = new Float32Array(this.numActions);
+    this._warmupDone = false; // Track if LSTM warmup has been completed
 
     this.tracking = null;
     if (config.tracking) {
@@ -74,6 +75,64 @@ export class PolicyRunner {
       obsModules: this.obsModules.map(m => ({ name: m.constructor.name, size: m.size }))
     });
     this.reset();
+    
+    // Initialize LSTM/internal state by running multiple warmup inferences
+    // This matches the original FSMDeploy_G1 LocoMode initialization:
+    //   for _ in range(50):
+    //       self.policy(torch.from_numpy(self.obs))
+    await this._warmupLSTMState();
+  }
+  
+  async _warmupLSTMState() {
+    // Create a dummy state with zeros for warmup
+    // This initializes internal LSTM state (if present) to a stable value
+    const warmupState = {
+      rootAngVel: new Float32Array(3),
+      rootQuat: new Float32Array([0, 0, 0, 1]), // identity quaternion
+      rootPos: new Float32Array(3),
+      jointPos: new Float32Array(this.numActions),
+      jointVel: new Float32Array(this.numActions)
+    };
+    
+    // Reset observations to use zero state
+    for (const obs of this.obsModules) {
+      if (typeof obs.reset === 'function') {
+        obs.reset(warmupState);
+      }
+    }
+    
+    // Build observation vector from zero state
+    const obsVec = new Float32Array(this.numObs);
+    let offset = 0;
+    for (const obs of this.obsModules) {
+      const obsValue = obs.compute(warmupState);
+      if (obsValue instanceof Float32Array || Array.isArray(obsValue)) {
+        const obsArray = ArrayBuffer.isView(obsValue) ? obsValue : Float32Array.from(obsValue);
+        obsVec.set(obsArray, offset);
+        offset += obsArray.length;
+      }
+    }
+    
+    // Run 50 warmup inferences (matching original Python code)
+    console.log('%c[PolicyRunner] Warming up LSTM/internal state (50 iterations)...', 'color: cyan; font-weight: bold;');
+    const warmupCount = 50;
+    for (let i = 0; i < warmupCount; i++) {
+      // Prepare input dict with zero observation
+      const inputDict = { ...this.inputDict };
+      inputDict["policy"] = new ort.Tensor('float32', obsVec, [1, this.numObs]);
+      
+      try {
+        const [result, carry] = await this.module.runInference(inputDict);
+        // Update inputDict with carry (for recurrent models)
+        if (carry && Object.keys(carry).length > 0) {
+          Object.assign(this.inputDict, carry);
+        }
+      } catch (err) {
+        console.warn(`[PolicyRunner] Warmup inference ${i + 1}/${warmupCount} failed:`, err);
+      }
+    }
+    console.log(`%c[PolicyRunner] LSTM warmup completed (${warmupCount} iterations)`, 'color: cyan; font-weight: bold;');
+    this._warmupDone = true;
   }
 
   _buildObsModules(obsConfig) {
@@ -90,6 +149,10 @@ export class PolicyRunner {
   }
 
   reset(state = null) {
+    // Reset inputDict - warmup will be re-run if init() is called again
+    // For now, we reset it to initial state
+    // Note: If warmup was done, the LSTM state is internal to the ONNX model
+    // and won't be lost by resetting inputDict (unless the model explicitly exposes it)
     this.inputDict = this.module.initInput() ?? {};
     this.lastActions.fill(0.0);
     this.command.fill(0.0);

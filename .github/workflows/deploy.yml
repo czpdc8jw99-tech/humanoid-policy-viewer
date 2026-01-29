@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.10: Set initial joint positions to default_joint_pos on policy load)"
+name: "Deploy to GitHub Pages (v9.0.14: Add LSTM state warmup - 50 iterations matching original FSMDeploy_G1)"
 
 on:
   push:
