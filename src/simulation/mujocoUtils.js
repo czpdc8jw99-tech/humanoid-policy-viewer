@@ -196,6 +196,20 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.kpPolicy = toFloatArray(config.stiffness, this.numActions, 0.0);
   this.kdPolicy = toFloatArray(config.damping, this.numActions, 0.0);
   this.control_type = config.control_type ?? 'joint_position';
+  
+  // Debug: Log joint mapping for loco policy
+  if (policy_path && policy_path.includes('loco')) {
+    console.log('[Joint Mapping Debug] Policy joint names:', policyJointNames);
+    console.log('[Joint Mapping Debug] ctrl_adr_policy (policy action index -> actuator index):', this.ctrl_adr_policy);
+    console.log('[Joint Mapping Debug] Joint mapping details:', policyJointNames.map((name, idx) => ({
+      policyIdx: idx,
+      jointName: name,
+      actuatorIdx: this.ctrl_adr_policy[idx],
+      kp: this.kpPolicy[idx],
+      kd: this.kdPolicy[idx],
+      defaultPos: this.defaultJposPolicy[idx]
+    })));
+  }
 
   if (trackingConfig) {
     trackingConfig.policy_joint_names = policyJointNames.slice();
