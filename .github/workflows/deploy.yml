@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.5: Add debug logs for raw qvel values and addresses in readPolicyState)"
+name: "Deploy to GitHub Pages (v9.0.6: Add colored console logs and debug instructions)"
 
 on:
   push:

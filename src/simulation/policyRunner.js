@@ -37,6 +37,7 @@ export class PolicyRunner {
 
   async init() {
     await this.module.init();
+    console.log('%c[PolicyRunner] Policy initialized - Debug logs will appear below', 'color: green; font-weight: bold; font-size: 14px;');
     console.log('[PolicyRunner] Policy initialized:', {
       numActions: this.numActions,
       numObs: this.numObs,

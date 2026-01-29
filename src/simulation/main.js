@@ -995,7 +995,7 @@ export class MuJoCoDemo {
     if (!this._qvelDebugLogged && this.policyJointNames) {
       const leftLegIndices = [0, 3, 6, 9, 13, 17];
       const rightLegIndices = [1, 4, 7, 10, 14, 18];
-      console.log('=== [readPolicyState Debug] Raw qvel values and addresses ===');
+      console.log('%c=== [readPolicyState Debug] Raw qvel values and addresses ===', 'color: blue; font-weight: bold; font-size: 14px;');
       console.log('Left leg:');
       leftLegIndices.forEach(idx => {
         const qvelAdr = this.qvel_adr_policy[idx];
