@@ -86,13 +86,17 @@ export class PolicyRunner {
   async _warmupLSTMState() {
     // Create a dummy state with zeros for warmup
     // This initializes internal LSTM state (if present) to a stable value
+    // Note: Command observation will use this.command (which is [0,0,0] after reset)
     const warmupState = {
       rootAngVel: new Float32Array(3),
       rootQuat: new Float32Array([0, 0, 0, 1]), // identity quaternion
       rootPos: new Float32Array(3),
-      jointPos: new Float32Array(this.numActions),
-      jointVel: new Float32Array(this.numActions)
+      jointPos: new Float32Array(this.numActions).fill(0),
+      jointVel: new Float32Array(this.numActions).fill(0)
     };
+    
+    // Ensure command is zero for warmup (matching original Python: cmd_init = [0, 0, 0])
+    this.command.fill(0.0);
     
     // Reset observations to use zero state
     for (const obs of this.obsModules) {

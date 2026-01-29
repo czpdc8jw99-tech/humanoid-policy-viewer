@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.14: Add LSTM state warmup - 50 iterations matching original FSMDeploy_G1)"
+name: "Deploy to GitHub Pages (v9.0.15: Increase action_scale from 0.25 to 0.5 to improve balance control)"
 
 on:
   push:
