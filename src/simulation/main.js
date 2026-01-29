@@ -784,6 +784,41 @@ export class MuJoCoDemo {
                 }
               }
               
+              // Debug: Log action application mapping for left/right leg (first time only)
+              if (!this._actionApplicationLogged && this.policyJointNames && this.actionTarget) {
+                const leftLegIndices = [0, 3, 6, 9, 13, 17];
+                const rightLegIndices = [1, 4, 7, 10, 14, 18];
+                console.log('%c=== [Action Application Debug] Left leg action -> actuator mapping ===', 'color: orange; font-weight: bold;');
+                leftLegIndices.forEach(policyIdx => {
+                  const jointName = this.policyJointNames[policyIdx];
+                  const ctrlAdr = this.ctrl_adr_policy[policyIdx];
+                  const actionValue = this.actionTarget[policyIdx];
+                  const mujocoJointIdx = this.jointNamesMJC.indexOf(jointName);
+                  console.log(`  Policy[${policyIdx}] ${jointName}:`, {
+                    actionValue: actionValue,
+                    ctrlAdr: ctrlAdr,
+                    mujocoJointIdx: mujocoJointIdx,
+                    qposAdr: this.qpos_adr_policy[policyIdx],
+                    qvelAdr: this.qvel_adr_policy[policyIdx]
+                  });
+                });
+                console.log('%c=== [Action Application Debug] Right leg action -> actuator mapping ===', 'color: orange; font-weight: bold;');
+                rightLegIndices.forEach(policyIdx => {
+                  const jointName = this.policyJointNames[policyIdx];
+                  const ctrlAdr = this.ctrl_adr_policy[policyIdx];
+                  const actionValue = this.actionTarget[policyIdx];
+                  const mujocoJointIdx = this.jointNamesMJC.indexOf(jointName);
+                  console.log(`  Policy[${policyIdx}] ${jointName}:`, {
+                    actionValue: actionValue,
+                    ctrlAdr: ctrlAdr,
+                    mujocoJointIdx: mujocoJointIdx,
+                    qposAdr: this.qpos_adr_policy[policyIdx],
+                    qvelAdr: this.qvel_adr_policy[policyIdx]
+                  });
+                });
+                this._actionApplicationLogged = true;
+              }
+              
               for (let i = 0; i < this.numActions; i++) {
                 const qpos_adr = this.qpos_adr_policy[i];
                 const qvel_adr = this.qvel_adr_policy[i];

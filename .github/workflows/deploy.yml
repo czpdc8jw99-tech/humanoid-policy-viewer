@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.6: Add colored console logs and debug instructions)"
+name: "Deploy to GitHub Pages (v9.0.7: Add detailed action application mapping debug logs)"
 
 on:
   push:
