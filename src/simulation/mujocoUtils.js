@@ -257,6 +257,26 @@ export async function reloadPolicy(policy_path, options = {}) {
   }
 
   this.simulation.resetData();
+  
+  // Set initial joint positions to default_joint_pos if available (for loco policy)
+  if (this.defaultJposPolicy && this.qpos_adr_policy && this.qpos_adr_policy.length > 0) {
+    const qpos = this.simulation.qpos;
+    for (let i = 0; i < this.numActions; i++) {
+      const qposAdr = this.qpos_adr_policy[i];
+      if (qposAdr >= 0 && qposAdr < qpos.length) {
+        qpos[qposAdr] = this.defaultJposPolicy[i];
+      }
+    }
+    // Reset velocities to zero
+    const qvel = this.simulation.qvel;
+    for (let i = 0; i < this.numActions; i++) {
+      const qvelAdr = this.qvel_adr_policy[i];
+      if (qvelAdr >= 0 && qvelAdr < qvel.length) {
+        qvel[qvelAdr] = 0.0;
+      }
+    }
+  }
+  
   this.simulation.forward();
   
   // 检测多机器人模式 (v7.0.4) - 使用之前已声明的isMultiRobot变量

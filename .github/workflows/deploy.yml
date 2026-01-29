@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.9: Add tanh squash for loco policy actions)"
+name: "Deploy to GitHub Pages (v9.0.10: Set initial joint positions to default_joint_pos on policy load)"
 
 on:
   push:
