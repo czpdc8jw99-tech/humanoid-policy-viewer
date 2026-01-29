@@ -35,8 +35,37 @@ export class PolicyRunner {
     this.numObs = this.obsModules.reduce((sum, obs) => sum + (obs.size ?? 0), 0);
   }
 
+  _getExpectedObsSizeFromMeta() {
+    const shapes = this.config?.onnx?.meta?.in_shapes;
+    if (!Array.isArray(shapes) || shapes.length === 0) return null;
+    // Expect something like: [[[1, 96]]]
+    const first = shapes[0];
+    const inner = Array.isArray(first) ? first[0] : null;
+    if (!Array.isArray(inner) || inner.length === 0) return null;
+    const lastDim = inner[inner.length - 1];
+    return Number.isFinite(lastDim) ? lastDim : null;
+  }
+
+  _assertObsSizeMatchesModelMeta() {
+    const expected = this._getExpectedObsSizeFromMeta();
+    if (expected == null) return;
+    if (this.numObs !== expected) {
+      const moduleSummary = this.obsModules.map((m) => `${m.constructor.name}(${m.size ?? 0})`).join(' + ');
+      throw new Error(
+        [
+          '[PolicyRunner] Observation size mismatch.',
+          `- Built numObs=${this.numObs} from obs_config: ${moduleSummary}`,
+          `- ONNX meta expects last dim=${expected} (from onnx.meta.in_shapes)`,
+          'This usually means the wrong policy JSON was loaded, or obs_config does not match the ONNX model.'
+        ].join('\n')
+      );
+    }
+  }
+
   async init() {
     await this.module.init();
+    // Fail fast if obs_config does not match ONNX model input shape.
+    this._assertObsSizeMatchesModelMeta();
     console.log('%c[PolicyRunner] Policy initialized - Debug logs will appear below', 'color: green; font-weight: bold; font-size: 14px;');
     console.log('[PolicyRunner] Policy initialized:', {
       numActions: this.numActions,

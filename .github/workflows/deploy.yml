@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.7: Add detailed action application mapping debug logs)"
+name: "Deploy to GitHub Pages (v9.0.8: Fail fast on obs/model input shape mismatch)"
 
 on:
   push:
