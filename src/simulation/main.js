@@ -6,6 +6,22 @@ import { generateMultiRobotXML } from './multiRobotGenerator.js';
 
 const defaultPolicy = "./examples/checkpoints/g1/tracking_policy_amass.json";
 
+function applyDeadzone(x, deadzone = 0.12) {
+  const ax = Math.abs(x);
+  if (ax <= deadzone) return 0.0;
+  const scaled = (ax - deadzone) / (1.0 - deadzone);
+  return Math.sign(x) * scaled;
+}
+
+function scaleBipolar(u, min, max) {
+  // Map joystick u in [-1, 1] to an asymmetric range, keeping 0 -> 0.
+  // For example: min=-0.4, max=0.7
+  if (!Number.isFinite(u)) return 0.0;
+  if (u >= 0) return u * max;
+  const negMax = Number.isFinite(min) ? -min : 0.0;
+  return u * negMax;
+}
+
 export class MuJoCoDemo {
   constructor(mujoco) {
     this.mujoco = mujoco;
@@ -184,6 +200,16 @@ export class MuJoCoDemo {
     this.followInitialized = false;
     this.followBodyId = null;
     this.followDistance = this.camera.position.distanceTo(this.controls.target);
+
+    this.cmd = new Float32Array([0.0, 0.0, 0.0]); // [vx, vy, wz]
+    this.gamepadState = {
+      connected: false,
+      index: null,
+      id: '',
+      axes: [],
+      buttons: [],
+      cmd: [0.0, 0.0, 0.0]
+    };
 
     this.lastSimState = {
       bodies: new Map(),
@@ -545,6 +571,7 @@ export class MuJoCoDemo {
       }
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
+        this._updateGamepadCommand();
         // 状态读取和推理 (v7.0.9: 每个机器人使用独立的policyRunner，添加详细日志)
         let actionTargets = [];
         if (isMultiRobot) {
@@ -560,6 +587,7 @@ export class MuJoCoDemo {
                 console.warn(`Failed to read state for robot ${robotIdx + 1}`);
                 continue;
               }
+              this.policyRunners[robotIdx].setCommand?.(this.cmd);
               const actionTarget = await this.policyRunners[robotIdx].step(state);
               // v7.0.9: 检查actionTarget是否为有效数组（包括Float32Array）
               if (!actionTarget || (!Array.isArray(actionTarget) && !(actionTarget instanceof Float32Array)) || actionTarget.length === 0) {
@@ -594,6 +622,7 @@ export class MuJoCoDemo {
           // 单机器人模式：使用原有方法
           const state = this.readPolicyState();
           try {
+            this.policyRunner.setCommand?.(this.cmd);
             this.actionTarget = await this.policyRunner.step(state);
             actionTargets = [this.actionTarget]; // 保持数组格式一致
           } catch (e) {
@@ -804,6 +833,59 @@ export class MuJoCoDemo {
       const sleepTime = Math.max(0, target - elapsed);
       await new Promise((resolve) => setTimeout(resolve, sleepTime * 1000));
     }
+  }
+
+  _updateGamepadCommand() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pad = pads ? Array.from(pads).find((p) => p && p.connected) : null;
+    if (!pad) {
+      this.cmd[0] = 0.0;
+      this.cmd[1] = 0.0;
+      this.cmd[2] = 0.0;
+      this.gamepadState.connected = false;
+      this.gamepadState.index = null;
+      this.gamepadState.id = '';
+      this.gamepadState.axes = [];
+      this.gamepadState.buttons = [];
+      this.gamepadState.cmd = [0.0, 0.0, 0.0];
+      return;
+    }
+
+    const axes = (pad.axes || []).map((v) => applyDeadzone(Number(v) || 0.0));
+    const buttons = (pad.buttons || []).map((b) => Number(b?.value ?? 0.0));
+
+    // Standard mapping (most controllers):
+    // axes[0]=LSX, axes[1]=LSY, axes[2]=RSX, axes[3]=RSY
+    const uVx = -(axes[1] ?? 0.0); // forward
+    const uVy = axes[0] ?? 0.0; // left/right
+    const uWz = axes[2] ?? 0.0; // yaw
+
+    // LocoMode.yaml cmd_range
+    const vx = scaleBipolar(uVx, -0.4, 0.7);
+    const vy = scaleBipolar(uVy, -0.4, 0.4);
+    const wz = scaleBipolar(uWz, -1.57, 1.57);
+
+    this.cmd[0] = vx;
+    this.cmd[1] = vy;
+    this.cmd[2] = wz;
+
+    this.gamepadState.connected = true;
+    this.gamepadState.index = pad.index ?? null;
+    this.gamepadState.id = pad.id ?? '';
+    this.gamepadState.axes = axes;
+    this.gamepadState.buttons = buttons;
+    this.gamepadState.cmd = [vx, vy, wz];
+  }
+
+  getGamepadState() {
+    return {
+      connected: !!this.gamepadState.connected,
+      index: this.gamepadState.index,
+      id: this.gamepadState.id,
+      cmd: this.gamepadState.cmd.slice(),
+      axes: this.gamepadState.axes.slice(),
+      buttons: this.gamepadState.buttons.slice()
+    };
   }
 
   onWindowResize() {

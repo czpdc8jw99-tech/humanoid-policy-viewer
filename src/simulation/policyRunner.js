@@ -12,6 +12,7 @@ export class PolicyRunner {
       throw new Error('PolicyRunner requires policy_joint_names in config');
     }
     this.numActions = this.policyJointNames.length;
+    this.command = new Float32Array(3);
 
     this.actionScale = toFloatArray(options.actionScale ?? config.action_scale, this.numActions, 1.0);
     this.defaultJointPos = toFloatArray(options.defaultJointPos ?? [], this.numActions, 0.0);
@@ -36,6 +37,11 @@ export class PolicyRunner {
 
   async init() {
     await this.module.init();
+    console.log('[PolicyRunner] Policy initialized:', {
+      numActions: this.numActions,
+      numObs: this.numObs,
+      obsModules: this.obsModules.map(m => ({ name: m.constructor.name, size: m.size }))
+    });
     this.reset();
   }
 
@@ -55,6 +61,7 @@ export class PolicyRunner {
   reset(state = null) {
     this.inputDict = this.module.initInput() ?? {};
     this.lastActions.fill(0.0);
+    this.command.fill(0.0);
     if (this.tracking) {
       this.tracking.reset(state);
     }
@@ -62,6 +69,17 @@ export class PolicyRunner {
       if (typeof obs.reset === 'function') {
         obs.reset(state);
       }
+    }
+  }
+
+  setCommand(cmd) {
+    if (!cmd) return;
+    this.command[0] = cmd[0] ?? 0.0;
+    this.command[1] = cmd[1] ?? 0.0;
+    this.command[2] = cmd[2] ?? 0.0;
+    // Debug log for step 1 verification (will be removed later)
+    if (Math.abs(this.command[0]) > 0.01 || Math.abs(this.command[1]) > 0.01 || Math.abs(this.command[2]) > 0.01) {
+      console.log('[PolicyRunner] Command set:', [this.command[0], this.command[1], this.command[2]]);
     }
   }
 
@@ -82,6 +100,7 @@ export class PolicyRunner {
 
       const obsForPolicy = new Float32Array(this.numObs);
       let offset = 0;
+      const obsDebug = [];
       for (const obs of this.obsModules) {
         if (typeof obs.update === 'function') {
           obs.update(state);
@@ -89,7 +108,18 @@ export class PolicyRunner {
         const obsValue = obs.compute(state);
         const obsArray = ArrayBuffer.isView(obsValue) ? obsValue : Float32Array.from(obsValue);
         obsForPolicy.set(obsArray, offset);
+        obsDebug.push({ name: obs.constructor.name, size: obsArray.length, offset });
         offset += obsArray.length;
+      }
+      // Debug log for step 1 verification (first few steps only)
+      if (!this._obsLogged) {
+        console.log('[PolicyRunner] Observation vector built:', {
+          totalSize: obsForPolicy.length,
+          expectedSize: this.numObs,
+          components: obsDebug,
+          commandInObs: obsForPolicy.slice(6, 9) // Command should be at indices 6-8 (after RootAngVelB:3 + ProjectedGravityB:3)
+        });
+        this._obsLogged = true;
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
@@ -100,6 +130,15 @@ export class PolicyRunner {
       const action = result['action']?.data;
       if (!action || action.length !== this.numActions) {
         throw new Error('PolicyRunner received invalid action output');
+      }
+      // Debug log for step 1 verification (first inference only)
+      if (!this._inferenceLogged) {
+        console.log('[PolicyRunner] Inference successful:', {
+          actionLength: action.length,
+          actionRange: [Math.min(...action), Math.max(...action)],
+          command: [this.command[0], this.command[1], this.command[2]]
+        });
+        this._inferenceLogged = true;
       }
 
       const clip = typeof this.actionClip === 'number' ? this.actionClip : Infinity;

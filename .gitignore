@@ -44,3 +44,9 @@ Thumbs.db
 .cache
 .temp
 dist
+
+# Python virtual environments
+.venv-onnx/
+.venv/
+venv/
+env/

@@ -9,11 +9,16 @@ import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  // 重要：GitHub Pages需要设置base路径为仓库名
-  // 如果你的仓库名不是 humanoid-policy-viewer，请修改这里
-  base: '/humanoid-policy-viewer/',
-  plugins: [
+export default defineConfig(() => {
+  // GitHub Pages(项目页)通常部署在 `/<repo>/` 路径下。
+  // 为了避免改仓库名就要手动改配置，这里在 GitHub Actions 环境下自动推导 repo 名。
+  const repo = process.env.GITHUB_REPOSITORY?.split('/')[1]
+  const isGitHubActions = process.env.GITHUB_ACTIONS === 'true'
+  const base = isGitHubActions && repo ? `/${repo}/` : '/'
+
+  return {
+    base,
+    plugins: [
     Vue({
       template: { transformAssetUrls },
     }),
@@ -35,36 +40,37 @@ export default defineConfig({
         ],
       },
     }),
-  ],
-  optimizeDeps: {
-    exclude: ['vuetify', 'onnxruntime-web'],
-  },
-  define: { 'process.env': {} },
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
-    extensions: [
-      '.js',
-      '.json',
-      '.jsx',
-      '.mjs',
-      '.ts',
-      '.tsx',
-      '.vue',
     ],
-  },
-  server: {
-    port: 3000,
-  },
-  css: {
-    preprocessorOptions: {
-      sass: {
-        api: 'modern-compiler',
+    optimizeDeps: {
+      exclude: ['vuetify', 'onnxruntime-web'],
+    },
+    define: { 'process.env': {} },
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
-      scss: {
-        api:'modern-compiler',
+      extensions: [
+        '.js',
+        '.json',
+        '.jsx',
+        '.mjs',
+        '.ts',
+        '.tsx',
+        '.vue',
+      ],
+    },
+    server: {
+      port: 3000,
+    },
+    css: {
+      preprocessorOptions: {
+        sass: {
+          api: 'modern-compiler',
+        },
+        scss: {
+          api: 'modern-compiler',
+        },
       },
     },
-  },
+  }
 })

@@ -28,6 +28,26 @@ class RootAngVelB {
   }
 }
 
+class Command {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+    this.scale = typeof kwargs.scale === 'number' ? kwargs.scale : 1.0;
+  }
+
+  get size() {
+    return 3;
+  }
+
+  compute() {
+    const cmd = this.policy?.command ?? null;
+    const x = cmd?.[0] ?? 0.0;
+    const y = cmd?.[1] ?? 0.0;
+    const z = cmd?.[2] ?? 0.0;
+    const s = this.scale;
+    return new Float32Array([s * x, s * y, s * z]);
+  }
+}
+
 class ProjectedGravityB {
   constructor() {
     this.gravity = new THREE.Vector3(0, 0, -1);
@@ -42,6 +62,53 @@ class ProjectedGravityB {
     const quatObj = new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0]);
     const gravityLocal = this.gravity.clone().applyQuaternion(quatObj.clone().invert());
     return new Float32Array([gravityLocal.x, gravityLocal.y, gravityLocal.z]);
+  }
+}
+
+class JointPosRel {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+    this.scale = typeof kwargs.scale === 'number' ? kwargs.scale : 1.0;
+  }
+
+  get size() {
+    return this.policy?.numActions ?? 0;
+  }
+
+  compute(state) {
+    const n = this.policy?.numActions ?? 0;
+    const out = new Float32Array(n);
+    const q = state?.jointPos ?? null;
+    const q0 = this.policy?.defaultJointPos ?? null;
+    const s = this.scale;
+    for (let i = 0; i < n; i++) {
+      const qi = q?.[i] ?? 0.0;
+      const q0i = q0?.[i] ?? 0.0;
+      out[i] = s * (qi - q0i);
+    }
+    return out;
+  }
+}
+
+class JointVel {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+    this.scale = typeof kwargs.scale === 'number' ? kwargs.scale : 1.0;
+  }
+
+  get size() {
+    return this.policy?.numActions ?? 0;
+  }
+
+  compute(state) {
+    const n = this.policy?.numActions ?? 0;
+    const out = new Float32Array(n);
+    const dq = state?.jointVel ?? null;
+    const s = this.scale;
+    for (let i = 0; i < n; i++) {
+      out[i] = s * (dq?.[i] ?? 0.0);
+    }
+    return out;
   }
 }
 
@@ -272,7 +339,10 @@ export const Observations = {
   PrevActions,
   BootIndicator,
   RootAngVelB,
+  Command,
   ProjectedGravityB,
+  JointPosRel,
+  JointVel,
   JointPos,
   TrackingCommandObsRaw,
   TargetRootZObs,

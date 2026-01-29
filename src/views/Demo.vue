@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v8.2.0</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v9.0.0</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -86,68 +86,82 @@
         </v-alert>
 
         <v-divider class="my-2"/>
-        <div class="motion-status" v-if="trackingState">
-          <div class="status-legend" v-if="trackingState.available">
-            <span class="status-name">Current motion: {{ trackingState.currentName }}</span>
+        <template v-if="selectedPolicySupportsTracking">
+          <div class="motion-status" v-if="trackingState">
+            <div class="status-legend" v-if="trackingState.available">
+              <span class="status-name">Current motion: {{ trackingState.currentName }}</span>
+            </div>
           </div>
-        </div>
 
-          <v-progress-linear
-            v-if="shouldShowProgress"
-            :model-value="progressValue"
-            height="5"
-            color="primary"
-            rounded
-            class="mt-3 motion-progress-no-animation"
-          ></v-progress-linear>
-        <template v-if="trackingState && trackingState.available">
+            <v-progress-linear
+              v-if="shouldShowProgress"
+              :model-value="progressValue"
+              height="5"
+              color="primary"
+              rounded
+              class="mt-3 motion-progress-no-animation"
+            ></v-progress-linear>
+          <template v-if="trackingState && trackingState.available">
+            <v-alert
+              v-if="showBackToDefault"
+              type="info"
+              variant="tonal"
+              density="compact"
+              class="mt-3"
+            >
+              Motion "{{ trackingState.currentName }}" finished. Return to the default pose before starting another clip.
+              <v-btn
+                class="back-to-default-btn"
+                color="primary"
+                block
+                density="compact"
+                @click="backToDefault"
+              >
+                Back to default pose
+              </v-btn>
+            </v-alert>
+            <v-select
+              v-model="globalMotionTarget"
+              :items="globalMotionItems"
+              class="mt-3"
+              label="Global motion (all robots)"
+              density="compact"
+              hide-details
+              item-title="title"
+              item-value="value"
+              :disabled="state !== 1 || isGeneratingRobots"
+              @update:modelValue="onGlobalMotionChange"
+            ></v-select>
+            <div
+              v-if="globalPendingMotion"
+              class="text-caption mt-1"
+              style="color: #0D47A1;"
+            >
+              Pending: {{ globalPendingMotion }} (auto-play after returning to default)
+            </div>
+          </template>
+
           <v-alert
-            v-if="showBackToDefault"
+            v-else
             type="info"
             variant="tonal"
             density="compact"
-            class="mt-3"
           >
-            Motion "{{ trackingState.currentName }}" finished. Return to the default pose before starting another clip.
-            <v-btn
-              class="back-to-default-btn"
-              color="primary"
-              block
-              density="compact"
-              @click="backToDefault"
-            >
-              Back to default pose
-            </v-btn>
+            Loading motion presets…
           </v-alert>
-          <v-select
-            v-model="globalMotionTarget"
-            :items="globalMotionItems"
-            class="mt-3"
-            label="Global motion (all robots)"
-            density="compact"
-            hide-details
-            item-title="title"
-            item-value="value"
-            :disabled="state !== 1 || isGeneratingRobots"
-            @update:modelValue="onGlobalMotionChange"
-          ></v-select>
-          <div
-            v-if="globalPendingMotion"
-            class="text-caption mt-1"
-            style="color: #0D47A1;"
-          >
-            Pending: {{ globalPendingMotion }} (auto-play after returning to default)
-          </div>
         </template>
 
-        <v-alert
-          v-else
-          type="info"
-          variant="tonal"
-          density="compact"
-        >
-          Loading motion presets…
-        </v-alert>
+        <template v-else>
+          <v-alert type="info" variant="tonal" density="compact">
+            This policy is command-driven. Connect a gamepad to control walking.
+            <div class="text-caption mt-1">
+              Left stick: move (vx, vy). Right stick X: yaw (wz).
+            </div>
+          </v-alert>
+          <div class="text-caption mt-2">
+            Gamepad: <span v-if="gamepadState.connected">connected ({{ gamepadCmdLabel }})</span><span v-else>not connected</span>
+          </div>
+        </template>
 
         <v-divider class="my-2"/>
         <div class="upload-section">
@@ -494,6 +508,7 @@ export default {
         value: 'g1-tracking-lafan',
         title: 'G1 Tracking (LaFan1)',
         description: 'General tracking policy trained on LaFan1 dataset.',
+        supportsTracking: true,
         policyPath: './examples/checkpoints/g1/tracking_policy_lafan.json',
         onnxPath: './examples/checkpoints/g1/policy_lafan.onnx'
       },
@@ -501,8 +516,17 @@ export default {
         value: 'g1-tracking-lafan_amass',
         title: 'G1 Tracking (LaFan1&AMASS)',
         description: 'General tracking policy trained on LaFan1 and AMASS datasets.',
+        supportsTracking: true,
         policyPath: './examples/checkpoints/g1/tracking_policy_amass.json',
         onnxPath: './examples/checkpoints/g1/policy_amass.onnx'
+      },
+      {
+        value: 'g1-loco-29dof',
+        title: 'G1 Locomotion (Gamepad)',
+        description: 'Velocity-conditioned locomotion policy. Use a gamepad to command walking.',
+        supportsTracking: false,
+        policyPath: './examples/checkpoints/g1/loco_policy_29dof.json',
+        onnxPath: './examples/checkpoints/g1/policy_loco_29dof.onnx'
       }
     ],
     currentPolicy: 'g1-tracking-lafan_amass',
@@ -521,6 +545,7 @@ export default {
     isSafari: false,
     showSafariAlert: true,
     resize_listener: null,
+    gamepadState: { connected: false, index: null, id: '', cmd: [0, 0, 0] },
     // 多机器人配置 - v4.0
     // v8.0.3: 草稿(draft)数量，仅用于编辑，按“生成场景”才应用
     robotCountDraft: 1,
@@ -680,8 +705,18 @@ export default {
     selectedPolicy() {
       return this.policies.find((policy) => policy.value === this.currentPolicy) ?? null;
     },
+    selectedPolicySupportsTracking() {
+      return !!this.selectedPolicy?.supportsTracking;
+    },
     policyDescription() {
       return this.selectedPolicy?.description ?? '';
+    },
+    gamepadCmdLabel() {
+      const cmd = this.gamepadState?.cmd ?? [0, 0, 0];
+      const vx = Number(cmd[0] ?? 0).toFixed(2);
+      const vy = Number(cmd[1] ?? 0).toFixed(2);
+      const wz = Number(cmd[2] ?? 0).toFixed(2);
+      return `vx=${vx}, vy=${vy}, wz=${wz}`;
     },
     renderScaleLabel() {
       return `${this.renderScale.toFixed(2)}x`;
@@ -1316,6 +1351,17 @@ export default {
           onnxPath: selected.onnxPath || undefined
         });
         this.policyLabel = selected.policyPath?.split('/').pop() ?? this.policyLabel;
+        // Keep per-robot draft configs consistent with the global policy selector.
+        if (Array.isArray(this.robotConfigs)) {
+          for (const cfg of this.robotConfigs) {
+            if (cfg) cfg.policyPath = selected.policyPath;
+          }
+        }
+        if (Array.isArray(this.robotConfigsDraft)) {
+          for (const cfg of this.robotConfigsDraft) {
+            if (cfg) cfg.policyPath = selected.policyPath;
+          }
+        }
         this.reapplyCustomMotions();
         this.availableMotions = this.getAvailableMotions();
         // v8.1.6: reset global motion selector on policy change
@@ -1374,9 +1420,11 @@ export default {
       this.stopTrackingPoll();
       this.updateTrackingState();
       this.updatePerformanceStats();
+      this.updateGamepadState();
       this.trackingTimer = setInterval(() => {
         this.updateTrackingState();
         this.updatePerformanceStats();
+        this.updateGamepadState();
       }, 33);
     },
     stopTrackingPoll() {
@@ -1586,6 +1634,23 @@ export default {
         return;
       }
       this.simStepHz = this.demo.getSimStepHz?.() ?? this.demo.simStepHz ?? 0;
+    },
+    updateGamepadState() {
+      if (!this.demo) {
+        this.gamepadState = { connected: false, index: null, id: '', cmd: [0, 0, 0] };
+        return;
+      }
+      const st = this.demo.getGamepadState?.() ?? null;
+      if (!st) {
+        this.gamepadState = { connected: false, index: null, id: '', cmd: [0, 0, 0] };
+        return;
+      }
+      this.gamepadState = {
+        connected: !!st.connected,
+        index: st.index ?? null,
+        id: st.id ?? '',
+        cmd: Array.isArray(st.cmd) ? st.cmd : [0, 0, 0]
+      };
     },
     onRenderScaleChange(value) {
       if (!this.demo) {

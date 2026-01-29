@@ -7,7 +7,7 @@ global + per-robot motion controls and camera follow.
 
 | |
 |---|
-| GitHub Pages: `https://czpdc8jw99-tech.github.io/humanoid-policy-viewer/` |
+| GitHub Pages: `https://czpdc8jw99-tech.github.io/Football-Robot/` |
 
 ## ✨ Features
 
