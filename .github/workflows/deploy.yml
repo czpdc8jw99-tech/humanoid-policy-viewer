@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.4: Add debug logs for raw joint positions and defaults in JointPosRel)"
+name: "Deploy to GitHub Pages (v9.0.5: Add debug logs for raw qvel values and addresses in readPolicyState)"
 
 on:
   push:

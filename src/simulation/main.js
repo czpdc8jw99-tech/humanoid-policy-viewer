@@ -990,6 +990,35 @@ export class MuJoCoDemo {
       jointPos[i] = qpos[qposAdr];
       jointVel[i] = qvel[qvelAdr];
     }
+    
+    // Debug: Log raw qvel values for left/right leg joints (first call only)
+    if (!this._qvelDebugLogged && this.policyJointNames) {
+      const leftLegIndices = [0, 3, 6, 9, 13, 17];
+      const rightLegIndices = [1, 4, 7, 10, 14, 18];
+      console.log('=== [readPolicyState Debug] Raw qvel values and addresses ===');
+      console.log('Left leg:');
+      leftLegIndices.forEach(idx => {
+        const qvelAdr = this.qvel_adr_policy[idx];
+        const rawQvel = qvel[qvelAdr];
+        console.log(`  [${idx}] ${this.policyJointNames[idx]}:`, {
+          qvelAdr: qvelAdr,
+          rawQvel: rawQvel,
+          jointVel: jointVel[idx]
+        });
+      });
+      console.log('Right leg:');
+      rightLegIndices.forEach(idx => {
+        const qvelAdr = this.qvel_adr_policy[idx];
+        const rawQvel = qvel[qvelAdr];
+        console.log(`  [${idx}] ${this.policyJointNames[idx]}:`, {
+          qvelAdr: qvelAdr,
+          rawQvel: rawQvel,
+          jointVel: jointVel[idx]
+        });
+      });
+      this._qvelDebugLogged = true;
+    }
+    
     const rootPos = new Float32Array([qpos[0], qpos[1], qpos[2]]);
     const rootQuat = new Float32Array([qpos[3], qpos[4], qpos[5], qpos[6]]);
     const rootAngVel = new Float32Array([qvel[3], qvel[4], qvel[5]]);
