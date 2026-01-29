@@ -17,6 +17,7 @@ export class PolicyRunner {
     this.actionScale = toFloatArray(options.actionScale ?? config.action_scale, this.numActions, 1.0);
     this.defaultJointPos = toFloatArray(options.defaultJointPos ?? [], this.numActions, 0.0);
     this.actionClip = typeof config.action_clip === 'number' ? config.action_clip : 10.0;
+    this.actionSquash = config.action_squash ?? null; // "tanh" or null
 
     this.module = new ONNXModule(config.onnx);
     this.inputDict = {};
@@ -245,7 +246,12 @@ export class PolicyRunner {
 
       const clip = typeof this.actionClip === 'number' ? this.actionClip : Infinity;
       for (let i = 0; i < this.numActions; i++) {
-        const value = action[i];
+        let value = action[i];
+        // Apply squash (e.g., tanh) if configured
+        if (this.actionSquash === 'tanh') {
+          value = Math.tanh(value);
+        }
+        // Then apply clip
         const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
         this.lastActions[i] = clamped;
       }

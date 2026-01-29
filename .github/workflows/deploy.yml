@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.8: Fail fast on obs/model input shape mismatch)"
+name: "Deploy to GitHub Pages (v9.0.9: Add tanh squash for loco policy actions)"
 
 on:
   push:
