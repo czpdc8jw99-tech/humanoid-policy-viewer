@@ -198,12 +198,21 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.control_type = config.control_type ?? 'joint_position';
   
   // Debug: Log joint mapping for loco policy
-  if (policy_path && policy_path.includes('loco')) {
+  if (policy_path && policy_path.includes('loco') && this.model) {
+    // Rebuild actuator2joint mapping for debug output
+    const jointTransmission = this.mujoco.mjtTrn.mjTRN_JOINT.value;
+    const actuator2joint = [];
+    for (let i = 0; i < this.model.nu; i++) {
+      if (this.model.actuator_trntype[i] === jointTransmission) {
+        actuator2joint.push(this.model.actuator_trnid[2 * i]);
+      }
+    }
+    
     console.log('[Joint Mapping Debug] ===== JOINT MAPPING ANALYSIS =====');
     console.log('[Joint Mapping Debug] MuJoCo joint names order (jointNamesMJC):', this.jointNamesMJC);
     console.log('[Joint Mapping Debug] Policy joint names order:', policyJointNames);
     console.log('[Joint Mapping Debug] Actuator to joint mapping (actuator2joint):', 
-      Array.from({length: model.nu}, (_, i) => ({
+      Array.from({length: this.model.nu}, (_, i) => ({
         actuatorIdx: i,
         jointIdx: actuator2joint[i],
         jointName: this.jointNamesMJC[actuator2joint[i]]
@@ -219,7 +228,7 @@ export async function reloadPolicy(policy_path, options = {}) {
           jointName: name,
           mujocoJointIdx: jointIdx,
           mujocoActuatorIdx: actuatorIdx,
-          actuatorJointName: this.jointNamesMJC[actuator2joint[actuatorIdx]],
+          actuatorJointName: actuatorIdx >= 0 && actuatorIdx < actuator2joint.length ? this.jointNamesMJC[actuator2joint[actuatorIdx]] : 'unknown',
           kp: this.kpPolicy[idx],
           kd: this.kdPolicy[idx],
           defaultPos: this.defaultJposPolicy[idx]
@@ -227,14 +236,14 @@ export async function reloadPolicy(policy_path, options = {}) {
       })
     );
     console.log('[Joint Mapping Debug] Left leg joints:', 
-      policyJointNames.map((name, idx) => name.startsWith('left_') && name.includes('hip') || name.includes('knee') || name.includes('ankle') ? {
+      policyJointNames.map((name, idx) => (name.startsWith('left_') && (name.includes('hip') || name.includes('knee') || name.includes('ankle'))) ? {
         policyIdx: idx,
         name: name,
         actuatorIdx: this.ctrl_adr_policy[idx]
       } : null).filter(x => x !== null)
     );
     console.log('[Joint Mapping Debug] Right leg joints:', 
-      policyJointNames.map((name, idx) => name.startsWith('right_') && (name.includes('hip') || name.includes('knee') || name.includes('ankle')) ? {
+      policyJointNames.map((name, idx) => (name.startsWith('right_') && (name.includes('hip') || name.includes('knee') || name.includes('ankle'))) ? {
         policyIdx: idx,
         name: name,
         actuatorIdx: this.ctrl_adr_policy[idx]

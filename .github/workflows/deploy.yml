@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.2: Add debug logs for left/right leg action analysis)"
+name: "Deploy to GitHub Pages (v9.0.2: Fix ReferenceError model is not defined)"
 
 on:
   push:
