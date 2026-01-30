@@ -649,8 +649,11 @@ export class PolicyRunner {
       // Monitor action symmetry periodically (every 30 frames = ~0.5 seconds at 60fps)
       // This helps detect if actions become asymmetric during runtime
       // Also monitor first 10 frames closely to catch early asymmetry
+      // Also monitor frames 60-120 closely to catch when asymmetry starts
       this._actionMonitorFrameCount++;
-      const shouldMonitor = (this._actionMonitorFrameCount % 30 === 0) || (this._actionMonitorFrameCount <= 10);
+      const shouldMonitor = (this._actionMonitorFrameCount % 30 === 0) || 
+                           (this._actionMonitorFrameCount <= 10) || 
+                           (this._actionMonitorFrameCount >= 60 && this._actionMonitorFrameCount <= 120 && this._actionMonitorFrameCount % 5 === 0);
       if (shouldMonitor) {
         const leftLegIndices = [0, 3, 6, 9, 13, 17];
         const rightLegIndices = [1, 4, 7, 10, 14, 18];

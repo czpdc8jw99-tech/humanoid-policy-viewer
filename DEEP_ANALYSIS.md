@@ -1,183 +1,161 @@
-# 深度代码分析 - 机器人往后倒问题
+# 深度分析：策略本身是否有问题？
 
-## 问题描述
-- 机器人往后倒
-- 选择左腿往前（但实际可能不对）
-- 感觉策略本身有问题
+## 📊 监控数据分析
 
-## 关键检查点
+### 关键时间点
 
-### 1. ProjectedGravityB 计算 ⚠️
+| Frame | 动作对称性 | PrevActions 对称性 | 状态 |
+|-------|-----------|-------------------|------|
+| 30 | ✅ 0.9348 | - | 对称 |
+| 60 | ✅ 0.9806 | - | 对称 |
+| 90 | ❌ 0.2981 | ❌ 0.4918 | **严重不对称** |
 
-**原始 Python 代码**：
-```python
-self.gravity_orientation = self.state_cmd.gravity_ori
-```
-- `gravity_ori` 是从 `state_cmd` 传入的，需要检查它的计算方式
+### 关键发现
 
-**我们的代码**：
+1. **Frame 30-60**: 动作对称性良好（0.93-0.98）
+2. **Frame 90**: 动作突然变得严重不对称（0.2981）
+3. **Frame 90**: PrevActions 已经不对称（0.4918）
+
+---
+
+## 🔍 问题分析
+
+### 问题1：为什么 Frame 60-90 之间动作会突然变得不对称？
+
+**可能的原因**：
+
+1. **策略在运行一段时间后开始不稳定**
+   - Frame 30-60 时策略输出还比较稳定
+   - Frame 60-90 之间，策略开始输出不对称的动作
+   - 这些不对称的动作被存储到 PrevActions
+   - 导致后续恶性循环
+
+2. **观察向量在运行过程中变得不对称**
+   - Frame 90 时，JointPosRel 还是对称的（0.9373）
+   - 但 PrevActions 已经不对称（0.4918）
+   - 说明 PrevActions 的不对称是导致动作不对称的直接原因
+
+3. **策略模型本身的问题**
+   - 策略在初始状态下（Frame 30-60）输出对称的动作
+   - 但在运行一段时间后（Frame 60-90）开始输出不对称的动作
+   - 这可能说明策略模型在某些输入下会变得不稳定
+
+---
+
+## 💡 关键问题
+
+### 问题1：策略在 Frame 60-90 之间为什么会突然变得不对称？
+
+**需要检查**：
+- Frame 60-90 之间的观察向量是否对称
+- Frame 60-90 之间的动作值变化
+- Frame 60-90 之间的 PrevActions 变化
+
+### 问题2：为什么 Frame 90 时 PrevActions 已经不对称？
+
+**可能的原因**：
+- Frame 60-90 之间，策略输出了不对称的动作
+- 这些不对称的动作被存储到 PrevActions
+- Frame 90 时，PrevActions 已经不对称
+
+### 问题3：策略模型本身是否有问题？
+
+**判断标准**：
+- 如果策略在初始状态下（Frame 1-10）就输出不对称的动作 → 策略模型有问题
+- 如果策略在运行一段时间后（Frame 60-90）才开始输出不对称的动作 → 可能是策略不稳定或观察向量问题
+
+---
+
+## 🔧 解决方案
+
+### 方案1：检查 Frame 60-90 之间的详细数据
+
+**需要的数据**：
+- Frame 60-90 之间的动作值
+- Frame 60-90 之间的 PrevActions 值
+- Frame 60-90 之间的观察向量值
+
+**目的**：
+- 确定动作何时开始不对称
+- 确定 PrevActions 何时开始不对称
+- 确定观察向量何时开始不对称
+
+### 方案2：强制 PrevActions 对称（临时修复）
+
+**方法**：
+- 在更新 PrevActions 时，如果检测到严重不对称，强制对称化
+- 例如：使用左右腿的平均值
+
+**实现**：
 ```javascript
-class ProjectedGravityB {
-  constructor() {
-    this.gravity = new THREE.Vector3(0, 0, -1);  // 世界坐标系中的重力方向
-  }
-  
-  compute(state) {
-    const quat = state.rootQuat;
-    const quatObj = new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0]);  // w, x, y, z
-    const gravityLocal = this.gravity.clone().applyQuaternion(quatObj.clone().invert());
-    return new Float32Array([gravityLocal.x, gravityLocal.y, gravityLocal.z]);
-  }
+// 在 PrevActions.update() 中
+if (prevRatio < 0.7) {
+  // 强制对称：使用左右腿的平均值
+  const avgAction = (leftAvg + rightAvg) / 2;
+  // 更新 PrevActions 使用对称值
 }
 ```
 
-**潜在问题**：
-- 四元数顺序：`new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0])` 是 `(x, y, z, w)`
-- 但 `state.rootQuat` 的顺序是 `[w, x, y, z]`（从 `readPolicyState` 看：`[qpos[3], qpos[4], qpos[5], qpos[6]]`）
-- 需要确认 MuJoCo 的四元数顺序
+**风险**：
+- 可能会掩盖真正的问题
+- 不是根本解决方案
 
-**检查**：MuJoCo 的四元数顺序通常是 `[w, x, y, z]`，但 THREE.js 的 `Quaternion` 构造函数是 `(x, y, z, w)`，所以我们的转换应该是正确的。
+### 方案3：降低 action_clip（临时修复）
 
----
+**当前**：`action_clip: 100.0`
+**建议**：降低到 `5.0` 或 `3.0`
 
-### 2. 动作应用公式 ⚠️
+**目的**：
+- 防止异常大的动作值（如 10.3132）被应用到机器人
+- 限制动作范围，减少不对称的放大效应
 
-**原始 Python**：
-```python
-loco_action = self.action * self.action_scale + self.default_angles
-```
+### 方案4：检查策略初始输出（根本修复）
 
-**我们的代码**：
-```javascript
-target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
-```
-
-**检查**：✅ 公式一致
+**方法**：
+- 检查策略在初始状态下（Frame 1-10）是否输出对称的动作
+- 如果初始输出就不对称，说明策略模型本身有问题
 
 ---
 
-### 3. 左右腿关节顺序 ⚠️
+## 📋 下一步行动
 
-**我们的 policy_joint_names**：
-```json
-[
-  "left_hip_pitch_joint",    // 0
-  "right_hip_pitch_joint",   // 1
-  "waist_yaw_joint",         // 2
-  "left_hip_roll_joint",     // 3
-  "right_hip_roll_joint",    // 4
-  ...
-]
-```
+### 立即执行
 
-**左腿索引**：`[0, 3, 6, 9, 13, 17]` = `[left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee, left_ankle_pitch, left_ankle_roll]`
-**右腿索引**：`[1, 4, 7, 10, 14, 18]` = `[right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee, right_ankle_pitch, right_ankle_roll]`
+1. **检查是否有 Frame 1-10 的早期检测输出**
+   - 如果没有，说明早期检测代码可能还没有部署
+   - 或者 Frame 1-10 时动作还是对称的，所以没有触发警告
 
-**需要检查**：原始 Python 代码中的 `joint2motor_idx` 顺序是否与我们的 `policy_joint_names` 一致
+2. **添加 Frame 60-90 之间的详细监控**
+   - 监控每一帧的动作对称性
+   - 监控每一帧的 PrevActions 对称性
+   - 确定动作何时开始不对称
+
+3. **检查策略初始输出**
+   - 查看 Frame 1-10 的动作值
+   - 确定策略在初始状态下是否输出对称的动作
 
 ---
 
-### 4. 观察向量输入 clip ⚠️
+## 🎯 关键结论
 
-**原始 Python**：
-```python
-obs_tensor = self.obs.reshape(1, -1)
-obs_tensor = obs_tensor.astype(np.float32)
-self.action = self.policy(torch.from_numpy(obs_tensor).clip(-100, 100)).clip(-100, 100)
-```
+1. ✅ **Frame 30-60 动作对称**：说明策略在初始状态下可以输出对称的动作
+2. ❌ **Frame 90 动作严重不对称**：说明策略在运行一段时间后开始不稳定
+3. ❌ **Frame 90 PrevActions 不对称**：说明 PrevActions 的不对称是导致动作不对称的直接原因
 
-**关键**：输入 obs 被 clip 到 `[-100, 100]`
-
-**我们的代码**：
-```javascript
-this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
-```
-
-**问题**：❌ **我们没有对输入 obs 进行 clip！**
+**判断**：
+- 策略模型本身**可能没有问题**（因为 Frame 30-60 时输出对称）
+- 但策略在运行一段时间后**开始不稳定**（Frame 60-90 之间）
+- 需要进一步检查 Frame 60-90 之间的详细数据
 
 ---
 
-### 5. 动作符号问题 ⚠️
+## 📊 数据总结
 
-如果机器人往后倒，可能是：
-1. 重力方向计算错误（导致策略认为机器人前倾，实际是后倾）
-2. 动作符号错误（策略输出正动作，但实际应用时方向相反）
-3. 关节定义方向错误
+| 项目 | Frame 30 | Frame 60 | Frame 90 |
+|------|----------|----------|----------|
+| 动作对称性 | ✅ 0.9348 | ✅ 0.9806 | ❌ 0.2981 |
+| PrevActions 对称性 | - | - | ❌ 0.4918 |
+| JointPosRel 对称性 | - | - | ✅ 0.9373 |
+| JointVel 对称性 | - | - | ✅ 0.7912 |
 
----
-
-## 建议的修复
-
-### 修复 1：添加输入 obs clip
-
-**文件**：`src/simulation/policyRunner.js`
-
-```javascript
-// 在构建 obsForPolicy 后，应用 clip
-for (let i = 0; i < obsForPolicy.length; i++) {
-  obsForPolicy[i] = Math.max(-100, Math.min(100, obsForPolicy[i]));
-}
-```
-
-### 修复 2：验证重力方向计算
-
-添加调试日志，检查重力方向是否正确：
-- 机器人站立时，重力方向应该是 `[0, 0, -1]`（在机器人坐标系中）
-- 如果机器人前倾，重力方向应该变化
-
-### 修复 3：检查动作符号
-
-添加调试日志，检查：
-- 策略输出的原始动作值
-- 应用后的目标位置
-- 实际关节位置
-
----
-
-## 调试指令
-
-### 检查重力方向
-
-```javascript
-const pr = window.demo.policyRunner || window.demo.policyRunners?.[0];
-const demo = window.demo;
-const state = demo.readPolicyState();
-
-// 检查重力方向
-const gravityObs = pr.obsModules.find(obs => obs.constructor.name === 'ProjectedGravityB');
-const gravity = gravityObs.compute(state);
-console.log('Gravity direction (robot frame):', Array.from(gravity));
-console.log('Gravity magnitude:', Math.sqrt(gravity[0]**2 + gravity[1]**2 + gravity[2]**2));
-
-// 检查四元数
-console.log('Root quaternion:', Array.from(state.rootQuat));
-```
-
-### 检查动作值
-
-```javascript
-const pr = window.demo.policyRunner || window.demo.policyRunners?.[0];
-const demo = window.demo;
-
-// 检查动作值
-const actions = pr.lastActions;
-const targets = demo.actionTarget;
-const defaults = pr.defaultJointPos;
-
-console.log('Left leg actions (indices 0,3,6,9,13,17):', [0,3,6,9,13,17].map(i => actions[i]));
-console.log('Right leg actions (indices 1,4,7,10,14,18):', [1,4,7,10,14,18].map(i => actions[i]));
-
-console.log('Left leg targets:', [0,3,6,9,13,17].map(i => targets[i]));
-console.log('Right leg targets:', [1,4,7,10,14,18].map(i => targets[i]));
-
-console.log('Left leg adjustments (target - default):', [0,3,6,9,13,17].map(i => targets[i] - defaults[i]));
-console.log('Right leg adjustments (target - default):', [1,4,7,10,14,18].map(i => targets[i] - defaults[i]));
-```
-
----
-
-## 下一步
-
-1. **先添加输入 obs clip**（最可能的问题）
-2. **添加重力方向调试日志**
-3. **检查动作符号**
+**结论**：Frame 60-90 之间，动作开始变得不对称，导致 PrevActions 不对称，形成恶性循环。
