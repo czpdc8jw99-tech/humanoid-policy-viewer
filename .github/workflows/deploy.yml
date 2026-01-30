@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.25: Fix NaN in action symmetry check when actions are zero)"
+name: "Deploy to GitHub Pages (v9.0.26: Add runtime action monitoring for symmetry and magnitude)"
 
 on:
   push:

@@ -1,194 +1,115 @@
-# 下一步行动计划
+# 下一步计划
 
-## 当前问题
+## ✅ 已完成的工作
 
-- ✅ LSTM warmup 已实现
-- ✅ 初始姿态设置已修复
-- ✅ action_scale 已从 0.25 增加到 0.5
-- ❌ **机器人仍然站不住，且看不出有抵抗趋势**
+1. ✅ **初始状态诊断**：所有7项检查都正常
+2. ✅ **自动诊断功能**：策略加载后自动运行
+3. ✅ **动作监控功能**：在策略推理后定期检查动作对称性
 
-## 问题分析
+---
 
-### 可能的原因
+## 🎯 当前状态
 
-1. **动作幅度仍然太小**
-   - 即使增加到 0.5，如果原始动作值在 [-1, 1] 范围内
-   - 实际调整只有 ±0.5 弧度（约 ±29 度）
-   - 可能不足以维持平衡
+### 诊断结果（初始状态）
+- ✅ ProjectedGravityB: `[0, 0, -1]` - 正常
+- ✅ RootAngVelB: `[0, 0, 0]` - 正常
+- ✅ Command: `[0, 0, 0]` - 正常
+- ✅ JointPosRel: 所有值都是 `0.0000` - 正常
+- ✅ JointVel: 所有值都是 `0.0000` - 正常
+- ✅ Root Position Z: `0.800` - 正常
+- ✅ Action Symmetry: 初始状态（动作值全为0） - 正常
 
-2. **tanh 压缩了动作范围**
-   - 原始代码没有 tanh
-   - 如果策略原始输出是 [-4, 4]，tanh 后变成 [-1, 1]
-   - 这会导致动作幅度大幅减小
+**结论**：初始状态完全正常！
 
-3. **观察向量可能有问题**
-   - ProjectedGravityB 可能没有正确更新
-   - RootAngVelB 可能没有正确读取
-   - 策略可能没有感知到倾斜
+---
 
-4. **策略输出本身有问题**
-   - ONNX 转换可能改变了输出分布
-   - 策略可能没有正确初始化
+## 🔍 下一步：监控运行时动作
 
-## 诊断步骤（按优先级）
+### 问题
+初始状态正常，但机器人还是会快速倒下。这说明问题在**策略推理后的动作输出**。
 
-### 步骤 1：验证观察向量是否正确更新 ⭐⭐⭐
+### 解决方案
+已添加**动作监控功能**，会在策略推理后定期检查：
+- 动作对称性（左右腿是否对称）
+- 动作值大小（是否过大）
 
-**目的**：确认策略能够感知到机器人的倾斜和旋转
+### 监控频率
+- 每30帧检查一次（约0.5秒）
+- 只在检测到异常时输出警告：
+  - 动作不对称（对称性比例 < 0.7）
+  - 动作过大（最大动作值 > 2.0）
 
-**在控制台运行**：
-```javascript
-const pr = window.demo.policyRunner || window.demo.policyRunners?.[0];
-const demo = window.demo;
+---
 
-// 持续监控观察向量
-const monitor = setInterval(() => {
-  const state = demo.readPolicyState();
-  
-  // 检查重力投影
-  const gravityObs = pr.obsModules.find(obs => obs.constructor.name === 'ProjectedGravityB');
-  if (gravityObs) {
-    const gravity = gravityObs.compute(state);
-    const magnitude = Math.sqrt(gravity[0]**2 + gravity[1]**2 + gravity[2]**2);
-    console.log('ProjectedGravityB:', Array.from(gravity), '|magnitude:', magnitude.toFixed(3));
-    // 正常应该是 [0, 0, -1] 或接近，如果机器人倾斜会偏离
-  }
-  
-  // 检查角速度
-  console.log('RootAngVelB:', Array.from(state.rootAngVel));
-  
-  // 检查动作输出
-  const actions = pr.lastActions;
-  const leftLegIndices = [0, 3, 6, 9, 13, 17];
-  const rightLegIndices = [1, 4, 7, 10, 14, 18];
-  const leftAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(actions[i]), 0) / leftLegIndices.length;
-  const rightAvg = rightLegIndices.reduce((sum, i) => sum + Math.abs(actions[i]), 0) / rightLegIndices.length;
-  console.log('Action magnitude - Left:', leftAvg.toFixed(3), 'Right:', rightAvg.toFixed(3));
-  
-  console.log('---');
-}, 500); // 每 500ms 输出一次
+## 📋 测试步骤
 
-// 运行一段时间后停止
-setTimeout(() => clearInterval(monitor), 10000);
-```
+### 步骤1：刷新页面
+等待部署完成（约1-2分钟），然后刷新页面（F5）
 
-**预期结果**：
-- 如果机器人倾斜，ProjectedGravityB 应该偏离 [0, 0, -1]
-- 如果机器人开始倒下，RootAngVelB 应该增加
-- 策略应该输出相应的恢复动作
+### 步骤2：加载策略
+选择 "G1 Locomotion (Gamepad)" 策略
 
-**如果观察向量没有变化**：
-- 说明状态读取有问题
-- 需要检查 `readPolicyState()` 的实现
+### 步骤3：启动模拟
+取消暂停，让机器人开始运动
 
-**如果观察向量有变化，但动作没有响应**：
-- 说明策略推理有问题
-- 需要检查策略输出
+### 步骤4：观察控制台
+查看是否有 `[动作监控]` 警告：
+- 如果出现 `❌ 动作不对称`：说明左右腿动作不对称
+- 如果出现 `⚠️ 动作过大`：说明动作值异常大
 
-### 步骤 2：检查策略的原始输出范围 ⭐⭐⭐
+### 步骤5：报告结果
+把控制台中的 `[动作监控]` 输出发给我，特别是：
+- 对称性比例是多少
+- 左右腿平均幅度是多少
+- 最大动作值是多少
 
-**目的**：确认 tanh 是否压缩了动作范围
+---
 
-**方法**：修改代码，在应用 tanh 之前记录原始输出
+## 🔧 如果发现问题
 
-**需要修改的文件**：`src/simulation/policyRunner.js`
+### 问题1：动作不对称
+**症状**：对称性比例 < 0.7
+**可能原因**：
+- 策略输出本身不对称
+- 动作映射错误
+- 观察向量不对称
 
-**修改位置**：在 `step()` 方法中，应用 tanh 之前
+**解决方案**：
+- 检查策略输出（原始动作值）
+- 检查动作到关节的映射
+- 检查观察向量中的左右腿数据
 
-**修改内容**：
-```javascript
-// 在应用 tanh 之前记录原始输出
-if (!this._rawOutputLogged) {
-  console.log('=== Raw policy output (before tanh) ===');
-  console.log('Range:', Math.min(...Array.from(action)), Math.max(...Array.from(action)));
-  console.log('Mean:', Array.from(action).reduce((a, b) => a + b, 0) / action.length);
-  this._rawOutputLogged = true;
-}
-```
+### 问题2：动作过大
+**症状**：最大动作值 > 2.0
+**可能原因**：
+- `action_scale` 不合适
+- 策略输出范围异常
+- 动作 clip 未正确应用
 
-**预期结果**：
-- 如果原始输出范围是 [-1, 1] 左右 → tanh 影响不大，需要增加 action_scale
-- 如果原始输出范围是 [-4, 4] 或更大 → tanh 压缩了范围，应该移除 tanh
+**解决方案**：
+- 调整 `action_scale`（当前是 0.55）
+- 检查策略原始输出范围
+- 验证动作 clip 是否正确应用
 
-### 步骤 3：尝试移除 tanh ⭐⭐
+---
 
-**目的**：如果原始输出范围较大，移除 tanh 可以让动作幅度更大
+## 📊 预期结果
 
-**修改文件**：`public/examples/checkpoints/g1/loco_policy_29dof.json`
+### 正常情况
+- 动作监控不输出警告（或偶尔输出，但对称性比例 > 0.7）
+- 机器人能够平稳站立
 
-**修改内容**：
-```json
-{
-  "action_squash": null,  // 从 "tanh" 改为 null
-  // 或者直接删除这一行
-}
-```
+### 异常情况
+- 频繁出现 `❌ 动作不对称` 警告
+- 频繁出现 `⚠️ 动作过大` 警告
+- 机器人快速倒下
 
-**注意事项**：
-- 用户说之前移除 tanh 失败了
-- 需要同时检查 clip 范围
-- 可能需要调整 action_scale
+---
 
-### 步骤 4：继续增加 action_scale ⭐
+## 💡 关键点
 
-**目的**：如果 tanh 必须保留，继续增加动作幅度
+1. **初始状态正常**：说明代码逻辑基本正确
+2. **运行时异常**：问题在策略推理后的动作输出
+3. **动作监控**：帮助我们定位具体问题
 
-**修改文件**：`public/examples/checkpoints/g1/loco_policy_29dof.json`
-
-**修改内容**：
-```json
-{
-  "action_scale": 1.0,  // 从 0.5 增加到 1.0
-}
-```
-
-**如果还不够**：
-- 可以尝试 1.5 或 2.0
-- 但要注意不要超出合理范围
-
-## 推荐方案
-
-### 方案 A：先诊断，再修复（推荐）
-
-1. **先运行步骤 1**：验证观察向量是否正确
-2. **然后运行步骤 2**：检查原始输出范围
-3. **根据结果决定**：
-   - 如果观察向量有问题 → 修复观察向量
-   - 如果原始输出范围大 → 移除 tanh
-   - 如果原始输出范围小 → 增加 action_scale 到 1.0
-
-### 方案 B：直接尝试移除 tanh
-
-1. **移除 tanh**（设置 `action_squash: null`）
-2. **保持 action_scale = 0.5**
-3. **测试效果**
-4. **如果不行，再增加 action_scale**
-
-### 方案 C：继续增加 action_scale
-
-1. **增加 action_scale 到 1.0**（保持 tanh）
-2. **测试效果**
-3. **如果不行，再考虑移除 tanh**
-
-## 我的建议
-
-**优先尝试方案 A（诊断优先）**：
-
-1. **先验证观察向量**：确认策略能够感知到倾斜
-2. **检查原始输出**：确认 tanh 是否压缩了范围
-3. **根据诊断结果**：有针对性地修复
-
-**如果诊断显示观察向量正常，但动作没有响应**：
-- 可能是策略本身的问题
-- 需要检查 ONNX 转换是否正确
-- 或者策略训练时就没有学会平衡恢复
-
-**如果诊断显示观察向量有问题**：
-- 需要修复状态读取或观察向量构建
-- 这是更根本的问题
-
-## 下一步行动
-
-1. **立即执行**：运行步骤 1 的诊断代码，观察输出
-2. **根据结果**：决定是修复观察向量，还是调整动作处理
-3. **如果都不行**：可能需要检查策略本身或 ONNX 转换
+请按照测试步骤操作，然后把 `[动作监控]` 的输出结果发给我。

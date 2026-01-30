@@ -26,6 +26,7 @@ export class PolicyRunner {
     this._warmupDone = false; // Track if LSTM warmup has been completed
     this._rawOutputRangeLogged = false; // Track if raw output range has been logged
     this._obsClipLogged = false; // Track if observation clip has been logged
+    this._actionMonitorFrameCount = 0; // Track frames for action monitoring
 
     this.tracking = null;
     if (config.tracking) {
@@ -595,6 +596,32 @@ export class PolicyRunner {
       for (const obs of this.obsModules) {
         if (obs.constructor.name === 'PrevActions' && typeof obs.update === 'function') {
           obs.update(state);
+        }
+      }
+
+      // Monitor action symmetry periodically (every 30 frames = ~0.5 seconds at 60fps)
+      // This helps detect if actions become asymmetric during runtime
+      this._actionMonitorFrameCount++;
+      if (this._actionMonitorFrameCount % 30 === 0) {
+        const leftLegIndices = [0, 3, 6, 9, 13, 17];
+        const rightLegIndices = [1, 4, 7, 10, 14, 18];
+        const leftAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(this.lastActions[i]), 0) / leftLegIndices.length;
+        const rightAvg = rightLegIndices.reduce((sum, i) => sum + Math.abs(this.lastActions[i]), 0) / rightLegIndices.length;
+        
+        if (leftAvg > 0 || rightAvg > 0) {
+          const ratio = Math.min(leftAvg, rightAvg) / Math.max(leftAvg, rightAvg);
+          const maxAction = Math.max(...Array.from(this.lastActions).map(Math.abs));
+          
+          // Only log if asymmetry detected or actions are very large
+          if (ratio < 0.7 || maxAction > 2.0) {
+            console.warn(`[动作监控] Frame ${this._actionMonitorFrameCount}:`, {
+              leftLegAvg: leftAvg.toFixed(4),
+              rightLegAvg: rightAvg.toFixed(4),
+              symmetryRatio: ratio.toFixed(4),
+              maxAction: maxAction.toFixed(4),
+              status: ratio < 0.7 ? '❌ 动作不对称' : maxAction > 2.0 ? '⚠️ 动作过大' : '✅'
+            });
+          }
         }
       }
 
