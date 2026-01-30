@@ -573,6 +573,23 @@ export class PolicyRunner {
       // Store raw action for monitoring (before clip, after tanh if applicable)
       this._lastRawActionBeforeClip = rawActionBeforeClip;
       
+      // Check initial action symmetry (first 10 frames) to catch early asymmetry
+      if (this._actionMonitorFrameCount <= 10) {
+        const leftLegIndices = [0, 3, 6, 9, 13, 17];
+        const rightLegIndices = [1, 4, 7, 10, 14, 18];
+        const leftAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(this.lastActions[i]), 0) / leftLegIndices.length;
+        const rightAvg = rightLegIndices.reduce((sum, i) => sum + Math.abs(this.lastActions[i]), 0) / rightLegIndices.length;
+        const ratio = Math.min(leftAvg, rightAvg) / Math.max(leftAvg, rightAvg);
+        if (ratio < 0.9) {
+          console.warn(`%c[早期检测] Frame ${this._actionMonitorFrameCount}: 动作开始不对称`, 'color: red; font-weight: bold;', {
+            leftAvg: leftAvg.toFixed(4),
+            rightAvg: rightAvg.toFixed(4),
+            ratio: ratio.toFixed(4),
+            note: '⚠️ 动作在早期就不对称，可能导致后续恶性循环'
+          });
+        }
+      }
+      
       // Debug: Log raw action values for left/right leg comparison (first inference only)
       if (this._rawActionLogged === undefined) {
         this._rawActionLogged = false;
@@ -605,13 +622,36 @@ export class PolicyRunner {
       for (const obs of this.obsModules) {
         if (obs.constructor.name === 'PrevActions' && typeof obs.update === 'function') {
           obs.update(state);
+          
+          // Debug: Check PrevActions symmetry after update (first 10 frames)
+          if (this._actionMonitorFrameCount <= 10) {
+            const prevActions = obs.compute(state);
+            const leftLegIndices = [0, 3, 6, 9, 13, 17];
+            const rightLegIndices = [1, 4, 7, 10, 14, 18];
+            const step0Offset = 0; // First step (most recent)
+            const leftPrev = leftLegIndices.map(i => prevActions[step0Offset * this.numActions + i]);
+            const rightPrev = rightLegIndices.map(i => prevActions[step0Offset * this.numActions + i]);
+            const leftPrevAvg = leftPrev.reduce((sum, v) => sum + Math.abs(v), 0) / leftPrev.length;
+            const rightPrevAvg = rightPrev.reduce((sum, v) => sum + Math.abs(v), 0) / rightPrev.length;
+            const prevRatio = Math.min(leftPrevAvg, rightPrevAvg) / Math.max(leftPrevAvg, rightPrevAvg);
+            if (prevRatio < 0.9) {
+              console.warn(`%c[早期检测] Frame ${this._actionMonitorFrameCount}: PrevActions 开始不对称`, 'color: orange; font-weight: bold;', {
+                leftAvg: leftPrevAvg.toFixed(4),
+                rightAvg: rightPrevAvg.toFixed(4),
+                ratio: prevRatio.toFixed(4),
+                note: '⚠️ PrevActions 不对称，下一帧策略输入将不对称'
+              });
+            }
+          }
         }
       }
 
       // Monitor action symmetry periodically (every 30 frames = ~0.5 seconds at 60fps)
       // This helps detect if actions become asymmetric during runtime
+      // Also monitor first 10 frames closely to catch early asymmetry
       this._actionMonitorFrameCount++;
-      if (this._actionMonitorFrameCount % 30 === 0) {
+      const shouldMonitor = (this._actionMonitorFrameCount % 30 === 0) || (this._actionMonitorFrameCount <= 10);
+      if (shouldMonitor) {
         const leftLegIndices = [0, 3, 6, 9, 13, 17];
         const rightLegIndices = [1, 4, 7, 10, 14, 18];
         const leftAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(this.lastActions[i]), 0) / leftLegIndices.length;

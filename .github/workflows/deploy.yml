@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.28: Add observation vector symmetry check to action monitoring)"
+name: "Deploy to GitHub Pages (v9.0.29: Add early frame monitoring to catch initial asymmetry)"
 
 on:
   push:
