@@ -118,6 +118,11 @@ export class PolicyRunner {
       }
     }
     
+    // CRITICAL: Clip observation vector to [-100, 100] as in original Python code
+    for (let i = 0; i < obsVec.length; i++) {
+      obsVec[i] = Math.max(-100, Math.min(100, obsVec[i]));
+    }
+    
     // Run 50 warmup inferences (matching original Python code)
     console.log('%c[PolicyRunner] Warming up LSTM/internal state (50 iterations)...', 'color: cyan; font-weight: bold;');
     const warmupCount = 50;
@@ -240,12 +245,15 @@ export class PolicyRunner {
         const command = obsForPolicy.slice(6, 9);
         const gravityMag = Math.sqrt(gravity[0]**2 + gravity[1]**2 + gravity[2]**2);
         const angVelMag = Math.sqrt(rootAngVel[0]**2 + rootAngVel[1]**2 + rootAngVel[2]**2);
+        const obsMin = Math.min(...Array.from(obsForPolicy));
+        const obsMax = Math.max(...Array.from(obsForPolicy));
         console.log(`[PolicyRunner] Obs update (frame ${this._obsFrameCount}):`, {
           gravity: Array.from(gravity).map(v => v.toFixed(3)),
           gravityMag: gravityMag.toFixed(3),
           angVel: Array.from(rootAngVel).map(v => v.toFixed(3)),
           angVelMag: angVelMag.toFixed(3),
-          command: Array.from(command).map(v => v.toFixed(3))
+          command: Array.from(command).map(v => v.toFixed(3)),
+          obsRange: `[${obsMin.toFixed(2)}, ${obsMax.toFixed(2)}]`
         });
       }
       // Debug log for step 1 verification (first few steps only)
@@ -320,6 +328,12 @@ export class PolicyRunner {
         );
         
         this._obsLogged = true;
+      }
+
+      // CRITICAL: Clip observation vector to [-100, 100] as in original Python code
+      // Original: obs_tensor = torch.from_numpy(obs_tensor).clip(-100, 100)
+      for (let i = 0; i < obsForPolicy.length; i++) {
+        obsForPolicy[i] = Math.max(-100, Math.min(100, obsForPolicy[i]));
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);

@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.20: Reduce action_scale to 0.55 and verify initial height 0.8m)"
+name: "Deploy to GitHub Pages (v9.0.21: Add input obs clip [-100,100] - critical fix matching original Python)"
 
 on:
   push:
