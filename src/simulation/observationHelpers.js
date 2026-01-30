@@ -51,6 +51,7 @@ class Command {
 class ProjectedGravityB {
   constructor() {
     this.gravity = [0.0, 0.0, -1.0];  // Use array format to match quatApplyInv
+    this._gravityLogged = false;  // Track if gravity has been logged
   }
 
   get size() {
@@ -62,6 +63,18 @@ class ProjectedGravityB {
     // Use quatApplyInv method for consistency with TargetProjectedGravityBObs
     // This ensures the same calculation method is used throughout the codebase
     const gLocal = quatApplyInv(quat, this.gravity);
+    
+    // Debug: Log gravity direction (first time only)
+    if (!this._gravityLogged) {
+      const gravityMag = Math.sqrt(gLocal[0]**2 + gLocal[1]**2 + gLocal[2]**2);
+      console.log('[ProjectedGravityB] Gravity direction (robot frame):', {
+        gravity: Array.from(gLocal).map(v => v.toFixed(4)),
+        magnitude: gravityMag.toFixed(4),
+        expected: '[0, 0, -1] if robot is standing upright'
+      });
+      this._gravityLogged = true;
+    }
+    
     return new Float32Array(gLocal);
   }
 }

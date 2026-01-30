@@ -25,6 +25,7 @@ export class PolicyRunner {
     this.lastActions = new Float32Array(this.numActions);
     this._warmupDone = false; // Track if LSTM warmup has been completed
     this._rawOutputRangeLogged = false; // Track if raw output range has been logged
+    this._obsClipLogged = false; // Track if observation clip has been logged
 
     this.tracking = null;
     if (config.tracking) {
@@ -118,8 +119,15 @@ export class PolicyRunner {
       obsVec[i] = Math.max(-100, Math.min(100, obsVec[i]));
     }
     
-    // Run 50 warmup inferences (matching original Python code)
+    // Verify warmup observation vector is all zeros
+    const warmupObsMin = Math.min(...Array.from(obsVec));
+    const warmupObsMax = Math.max(...Array.from(obsVec));
     console.log('%c[PolicyRunner] Warming up LSTM/internal state (50 iterations)...', 'color: cyan; font-weight: bold;');
+    console.log('[PolicyRunner] Warmup observation vector:', {
+      size: obsVec.length,
+      range: `[${warmupObsMin.toFixed(3)}, ${warmupObsMax.toFixed(3)}]`,
+      isAllZero: warmupObsMin === 0 && warmupObsMax === 0 ? '✅ YES' : '❌ NO'
+    });
     const warmupCount = 50;
     let warmupRawOutputLogged = false;
     for (let i = 0; i < warmupCount; i++) {
@@ -327,8 +335,23 @@ export class PolicyRunner {
 
       // CRITICAL: Clip observation vector to [-100, 100] as in original Python code
       // Original: obs_tensor = torch.from_numpy(obs_tensor).clip(-100, 100)
+      const obsBeforeClip = Array.from(obsForPolicy);
       for (let i = 0; i < obsForPolicy.length; i++) {
         obsForPolicy[i] = Math.max(-100, Math.min(100, obsForPolicy[i]));
+      }
+      
+      // Debug: Log if any values were clipped (first time only)
+      if (!this._obsClipLogged) {
+        let clippedCount = 0;
+        for (let i = 0; i < obsForPolicy.length; i++) {
+          if (Math.abs(obsBeforeClip[i] - obsForPolicy[i]) > 0.001) {
+            clippedCount++;
+          }
+        }
+        if (clippedCount > 0) {
+          console.warn(`[PolicyRunner] ${clippedCount} observation values were clipped to [-100, 100]`);
+        }
+        this._obsClipLogged = true;
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);

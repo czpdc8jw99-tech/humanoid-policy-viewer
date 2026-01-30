@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.22: Fix warmup obs vector to all-zero and unify ProjectedGravityB calculation)"
+name: "Deploy to GitHub Pages (v9.0.23: Add debug logs for warmup obs and gravity direction verification)"
 
 on:
   push:
