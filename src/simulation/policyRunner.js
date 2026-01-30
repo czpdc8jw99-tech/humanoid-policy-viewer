@@ -37,6 +37,14 @@ export class PolicyRunner {
 
     this.obsModules = this._buildObsModules(config.obs_config);
     this.numObs = this.obsModules.reduce((sum, obs) => sum + (obs.size ?? 0), 0);
+    // Debug: Verify obsModules initialization
+    if (!this.obsModules || this.obsModules.length === 0) {
+      console.warn('[PolicyRunner] WARNING: obsModules is empty or undefined!');
+      console.warn('[PolicyRunner] Config obs_config:', config.obs_config);
+    } else {
+      console.log(`[PolicyRunner] Initialized ${this.obsModules.length} observation modules, total obs size: ${this.numObs}`);
+      console.log('[PolicyRunner] Module names:', this.obsModules.map(m => m.constructor.name));
+    }
   }
 
   _getExpectedObsSizeFromMeta() {
@@ -83,6 +91,134 @@ export class PolicyRunner {
     //   for _ in range(50):
     //       self.policy(torch.from_numpy(self.obs))
     await this._warmupLSTMState();
+    
+    // Auto-run diagnostics after initialization (while simulation is paused)
+    this._runAutoDiagnostics();
+  }
+  
+  _runAutoDiagnostics() {
+    // Only run if we have access to demo and simulation
+    if (typeof window === 'undefined' || !window.demo) {
+      return;
+    }
+    
+    const demo = window.demo;
+    if (!demo.readPolicyState || !demo.simulation) {
+      return;
+    }
+    
+    // Run diagnostics automatically
+    console.log('%c=== [自动诊断] 策略初始化完成，开始诊断 ===', 'color: blue; font-weight: bold; font-size: 14px;');
+    
+    try {
+      const state = demo.readPolicyState();
+      if (!state) {
+        console.warn('[自动诊断] 无法读取策略状态');
+        return;
+      }
+      
+      // Use index-based lookup (works even if class names are minified)
+      // Config order: RootAngVelB(0), ProjectedGravityB(1), Command(2), JointPosRel(3), JointVel(4), PrevActions(5)
+      const gravityObs = this.obsModules[1]; // ProjectedGravityB
+      const jointPosRelObs = this.obsModules[3]; // JointPosRel
+      
+      // 1. Check gravity direction
+      if (gravityObs) {
+        const gravity = gravityObs.compute(state);
+        const mag = Math.sqrt(gravity[0]**2 + gravity[1]**2 + gravity[2]**2);
+        const expectedGravity = [0, 0, -1];
+        const diff = Math.sqrt(
+          (gravity[0] - expectedGravity[0])**2 +
+          (gravity[1] - expectedGravity[1])**2 +
+          (gravity[2] - expectedGravity[2])**2
+        );
+        console.log('[自动诊断] ProjectedGravityB:', {
+          value: Array.from(gravity).map(v => v.toFixed(4)),
+          magnitude: mag.toFixed(4),
+          expected: '[0, 0, -1]',
+          difference: diff.toFixed(4),
+          status: diff < 0.1 ? '✅' : '❌'
+        });
+      }
+      
+      // 2. Check root angular velocity
+      if (state.rootAngVel) {
+        const angVelMag = Math.sqrt(state.rootAngVel[0]**2 + state.rootAngVel[1]**2 + state.rootAngVel[2]**2);
+        console.log('[自动诊断] RootAngVelB:', {
+          value: Array.from(state.rootAngVel).map(v => v.toFixed(4)),
+          magnitude: angVelMag.toFixed(4),
+          expected: '[0, 0, 0]',
+          status: angVelMag < 0.01 ? '✅' : '❌'
+        });
+      }
+      
+      // 3. Check command
+      if (this.command) {
+        const cmdMag = Math.sqrt(this.command[0]**2 + this.command[1]**2 + this.command[2]**2);
+        console.log('[自动诊断] Command:', {
+          value: Array.from(this.command).map(v => v.toFixed(4)),
+          magnitude: cmdMag.toFixed(4),
+          expected: '[0, 0, 0]',
+          status: cmdMag < 0.01 ? '✅' : '❌'
+        });
+      }
+      
+      // 4. Check joint positions relative
+      if (jointPosRelObs) {
+        const jointPosRel = jointPosRelObs.compute(state);
+        const maxAbs = Math.max(...Array.from(jointPosRel.slice(0, 6)).map(Math.abs));
+        console.log('[自动诊断] JointPosRel (前6个):', {
+          values: Array.from(jointPosRel.slice(0, 6)).map(v => v.toFixed(4)),
+          maxAbs: maxAbs.toFixed(4),
+          expected: '[0, 0, 0, 0, 0, 0]',
+          status: maxAbs < 0.01 ? '✅' : '❌'
+        });
+      }
+      
+      // 5. Check joint velocities
+      if (state.jointVel) {
+        const maxAbs = Math.max(...state.jointVel.slice(0, 6).map(Math.abs));
+        console.log('[自动诊断] JointVel (前6个):', {
+          values: Array.from(state.jointVel.slice(0, 6)).map(v => v.toFixed(4)),
+          maxAbs: maxAbs.toFixed(4),
+          expected: '[0, 0, 0, 0, 0, 0]',
+          status: maxAbs < 0.01 ? '✅' : '❌'
+        });
+      }
+      
+      // 6. Check root position
+      const qpos = demo.simulation.qpos;
+      if (qpos && qpos.length >= 3) {
+        const rootZ = qpos[2];
+        console.log('[自动诊断] Root Position Z:', {
+          value: rootZ.toFixed(3),
+          expected: 0.8,
+          status: rootZ === 0.8 ? '✅' : '❌',
+          note: rootZ < 0.5 ? '⚠️ 机器人可能已倒下' : ''
+        });
+      }
+      
+      // 7. Check action symmetry
+      if (this.lastActions) {
+        const actions = this.lastActions;
+        const leftLegIndices = [0, 3, 6, 9, 13, 17];
+        const rightLegIndices = [1, 4, 7, 10, 14, 18];
+        const leftAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(actions[i]), 0) / leftLegIndices.length;
+        const rightAvg = rightLegIndices.reduce((sum, i) => sum + Math.abs(actions[i]), 0) / rightLegIndices.length;
+        const ratio = Math.min(leftAvg, rightAvg) / Math.max(leftAvg, rightAvg);
+        console.log('[自动诊断] Action Symmetry:', {
+          leftLegAvg: leftAvg.toFixed(4),
+          rightLegAvg: rightAvg.toFixed(4),
+          symmetryRatio: ratio.toFixed(4),
+          status: ratio > 0.7 ? '✅' : '❌',
+          note: ratio < 0.7 ? '⚠️ 动作严重不对称' : ''
+        });
+      }
+      
+      console.log('%c=== [自动诊断] 完成 ===', 'color: green; font-weight: bold; font-size: 14px;');
+    } catch (e) {
+      console.error('[自动诊断] 运行出错:', e);
+    }
   }
   
   async _warmupLSTMState() {
@@ -165,7 +301,7 @@ export class PolicyRunner {
 
   _buildObsModules(obsConfig) {
     const obsList = (obsConfig && Array.isArray(obsConfig.policy)) ? obsConfig.policy : [];
-    return obsList.map((obsConfigEntry) => {
+    const modules = obsList.map((obsConfigEntry) => {
       const ObsClass = Observations[obsConfigEntry.name];
       if (!ObsClass) {
         throw new Error(`Unknown observation type: ${obsConfigEntry.name}`);
@@ -174,6 +310,12 @@ export class PolicyRunner {
       delete kwargs.name;
       return new ObsClass(this, kwargs);
     });
+    // Debug: Log built observation modules
+    console.log('[PolicyRunner] Built observation modules:', modules.map(m => ({
+      name: m.constructor.name,
+      size: m.size
+    })));
+    return modules;
   }
 
   reset(state = null) {

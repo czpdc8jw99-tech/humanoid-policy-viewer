@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.23: Add debug logs for warmup obs and gravity direction verification)"
+name: "Deploy to GitHub Pages (v9.0.24: Add auto-diagnostics after policy initialization)"
 
 on:
   push:
