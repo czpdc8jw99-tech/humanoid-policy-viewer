@@ -552,6 +552,12 @@ export class PolicyRunner {
         this._inferenceLogged = true;
       }
 
+      // Store raw action before processing (for monitoring)
+      const rawActionBeforeClip = new Float32Array(this.numActions);
+      for (let i = 0; i < this.numActions; i++) {
+        rawActionBeforeClip[i] = action[i];
+      }
+      
       const clip = typeof this.actionClip === 'number' ? this.actionClip : Infinity;
       for (let i = 0; i < this.numActions; i++) {
         let value = action[i];
@@ -563,6 +569,9 @@ export class PolicyRunner {
         const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
         this.lastActions[i] = clamped;
       }
+      
+      // Store raw action for monitoring (before clip, after tanh if applicable)
+      this._lastRawActionBeforeClip = rawActionBeforeClip;
       
       // Debug: Log raw action values for left/right leg comparison (first inference only)
       if (this._rawActionLogged === undefined) {
@@ -614,13 +623,77 @@ export class PolicyRunner {
           
           // Only log if asymmetry detected or actions are very large
           if (ratio < 0.7 || maxAction > 2.0) {
-            console.warn(`[动作监控] Frame ${this._actionMonitorFrameCount}:`, {
+            // Detailed breakdown for asymmetric actions
+            const leftLegActions = leftLegIndices.map(i => ({
+              idx: i,
+              joint: this.policyJointNames[i],
+              action: this.lastActions[i].toFixed(4),
+              scale: this.actionScale[i].toFixed(4),
+              defaultPos: this.defaultJointPos[i].toFixed(4),
+              targetPos: (this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i]).toFixed(4)
+            }));
+            
+            const rightLegActions = rightLegIndices.map(i => ({
+              idx: i,
+              joint: this.policyJointNames[i],
+              action: this.lastActions[i].toFixed(4),
+              scale: this.actionScale[i].toFixed(4),
+              defaultPos: this.defaultJointPos[i].toFixed(4),
+              targetPos: (this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i]).toFixed(4)
+            }));
+            
+            // Check if action_scale is symmetric
+            const leftScales = leftLegIndices.map(i => this.actionScale[i]);
+            const rightScales = rightLegIndices.map(i => this.actionScale[i]);
+            const scalesSymmetric = JSON.stringify(leftScales) === JSON.stringify(rightScales);
+            
+            console.warn(`%c[动作监控] Frame ${this._actionMonitorFrameCount} - 详细分析`, 'color: red; font-weight: bold; font-size: 14px;');
+            console.warn('总体统计:', {
               leftLegAvg: leftAvg.toFixed(4),
               rightLegAvg: rightAvg.toFixed(4),
               symmetryRatio: ratio.toFixed(4),
               maxAction: maxAction.toFixed(4),
               status: ratio < 0.7 ? '❌ 动作不对称' : maxAction > 2.0 ? '⚠️ 动作过大' : '✅'
             });
+            
+            if (ratio < 0.7) {
+              console.warn('左腿动作值（详细）:', leftLegActions);
+              console.warn('右腿动作值（详细）:', rightLegActions);
+              console.warn('action_scale 对称性:', scalesSymmetric ? '✅ 对称' : '❌ 不对称');
+              if (!scalesSymmetric) {
+                console.warn('左腿 action_scale:', leftScales.map(s => s.toFixed(4)));
+                console.warn('右腿 action_scale:', rightScales.map(s => s.toFixed(4)));
+              }
+              
+              // Also show raw action values (before clip) if available
+              if (this._lastRawActionBeforeClip) {
+                const leftLegRaw = leftLegIndices.map(i => ({
+                  idx: i,
+                  joint: this.policyJointNames[i],
+                  rawAction: this._lastRawActionBeforeClip[i].toFixed(4),
+                  clampedAction: this.lastActions[i].toFixed(4)
+                }));
+                const rightLegRaw = rightLegIndices.map(i => ({
+                  idx: i,
+                  joint: this.policyJointNames[i],
+                  rawAction: this._lastRawActionBeforeClip[i].toFixed(4),
+                  clampedAction: this.lastActions[i].toFixed(4)
+                }));
+                console.warn('左腿原始动作值（clip前）:', leftLegRaw);
+                console.warn('右腿原始动作值（clip前）:', rightLegRaw);
+                
+                // Check if raw actions are also asymmetric
+                const leftRawAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(this._lastRawActionBeforeClip[i]), 0) / leftLegIndices.length;
+                const rightRawAvg = rightLegIndices.reduce((sum, i) => sum + Math.abs(this._lastRawActionBeforeClip[i]), 0) / rightLegIndices.length;
+                const rawRatio = Math.min(leftRawAvg, rightRawAvg) / Math.max(leftRawAvg, rightRawAvg);
+                console.warn('原始动作对称性:', {
+                  leftRawAvg: leftRawAvg.toFixed(4),
+                  rightRawAvg: rightRawAvg.toFixed(4),
+                  rawRatio: rawRatio.toFixed(4),
+                  note: rawRatio < 0.7 ? '❌ 策略输出本身就不对称' : '✅ 策略输出对称，问题在后续处理'
+                });
+              }
+            }
           }
         }
       }

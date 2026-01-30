@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.26: Add runtime action monitoring for symmetry and magnitude)"
+name: "Deploy to GitHub Pages (v9.0.27: Enhanced action monitoring with detailed breakdown)"
 
 on:
   push:
