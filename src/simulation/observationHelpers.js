@@ -50,7 +50,7 @@ class Command {
 
 class ProjectedGravityB {
   constructor() {
-    this.gravity = new THREE.Vector3(0, 0, -1);
+    this.gravity = [0.0, 0.0, -1.0];  // Use array format to match quatApplyInv
   }
 
   get size() {
@@ -59,9 +59,10 @@ class ProjectedGravityB {
 
   compute(state) {
     const quat = state.rootQuat;
-    const quatObj = new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0]);
-    const gravityLocal = this.gravity.clone().applyQuaternion(quatObj.clone().invert());
-    return new Float32Array([gravityLocal.x, gravityLocal.y, gravityLocal.z]);
+    // Use quatApplyInv method for consistency with TargetProjectedGravityBObs
+    // This ensures the same calculation method is used throughout the codebase
+    const gLocal = quatApplyInv(quat, this.gravity);
+    return new Float32Array(gLocal);
   }
 }
 

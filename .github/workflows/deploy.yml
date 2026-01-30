@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.21: Add input obs clip [-100,100] - critical fix matching original Python)"
+name: "Deploy to GitHub Pages (v9.0.22: Fix warmup obs vector to all-zero and unify ProjectedGravityB calculation)"
 
 on:
   push:

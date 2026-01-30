@@ -106,19 +106,14 @@ export class PolicyRunner {
       }
     }
     
-    // Build observation vector from zero state
-    const obsVec = new Float32Array(this.numObs);
-    let offset = 0;
-    for (const obs of this.obsModules) {
-      const obsValue = obs.compute(warmupState);
-      if (obsValue instanceof Float32Array || Array.isArray(obsValue)) {
-        const obsArray = ArrayBuffer.isView(obsValue) ? obsValue : Float32Array.from(obsValue);
-        obsVec.set(obsArray, offset);
-        offset += obsArray.length;
-      }
-    }
+    // CRITICAL FIX: Use all-zero observation vector (matching original Python)
+    // Original Python: self.obs = np.zeros(self.num_obs)
+    // We should NOT compute observations from warmupState, as that would give
+    // non-zero values (e.g., ProjectedGravityB would be [0, 0, -1] instead of [0, 0, 0])
+    const obsVec = new Float32Array(this.numObs).fill(0);
     
     // CRITICAL: Clip observation vector to [-100, 100] as in original Python code
+    // (Although it's all zeros, we still clip for consistency)
     for (let i = 0; i < obsVec.length; i++) {
       obsVec[i] = Math.max(-100, Math.min(100, obsVec[i]));
     }
