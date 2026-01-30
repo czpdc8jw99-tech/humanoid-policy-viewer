@@ -48,7 +48,7 @@
     "left_wrist_yaw_joint",
     "right_wrist_yaw_joint"
   ],
-  "action_scale": 0.5,
+  "action_scale": 1.0,
   "action_clip": 100.0,
   "action_squash": null,
   "stiffness": [
