@@ -693,6 +693,74 @@ export class PolicyRunner {
                   note: rawRatio < 0.7 ? '❌ 策略输出本身就不对称' : '✅ 策略输出对称，问题在后续处理'
                 });
               }
+              
+              // Check observation vector symmetry (CRITICAL: if obs is asymmetric, policy output will be asymmetric)
+              if (typeof window !== 'undefined' && window.demo && window.demo.readPolicyState) {
+                try {
+                  const obsState = window.demo.readPolicyState();
+                  const jointPosRelObs = this.obsModules[3]; // JointPosRel
+                  const jointVelObs = this.obsModules[4]; // JointVel (but we read from state)
+                  
+                  if (jointPosRelObs && obsState.jointPos) {
+                    const jointPosRel = jointPosRelObs.compute(obsState);
+                    const leftPosRel = leftLegIndices.map(i => jointPosRel[i]);
+                    const rightPosRel = rightLegIndices.map(i => jointPosRel[i]);
+                    const leftPosRelAvg = leftPosRel.reduce((sum, v) => sum + Math.abs(v), 0) / leftPosRel.length;
+                    const rightPosRelAvg = rightPosRel.reduce((sum, v) => sum + Math.abs(v), 0) / rightPosRel.length;
+                    const posRelRatio = Math.min(leftPosRelAvg, rightPosRelAvg) / Math.max(leftPosRelAvg, rightPosRelAvg);
+                    
+                    console.warn('%c[观察向量检查] JointPosRel 对称性', 'color: orange; font-weight: bold;', {
+                      leftAvg: leftPosRelAvg.toFixed(4),
+                      rightAvg: rightPosRelAvg.toFixed(4),
+                      ratio: posRelRatio.toFixed(4),
+                      status: posRelRatio > 0.7 ? '✅ 对称' : '❌ 不对称',
+                      note: posRelRatio < 0.7 ? '⚠️ 观察向量不对称可能导致策略输出不对称' : ''
+                    });
+                  }
+                  
+                  if (obsState.jointVel) {
+                    const leftVel = leftLegIndices.map(i => obsState.jointVel[i]);
+                    const rightVel = rightLegIndices.map(i => obsState.jointVel[i]);
+                    const leftVelAvg = leftVel.reduce((sum, v) => sum + Math.abs(v), 0) / leftVel.length;
+                    const rightVelAvg = rightVel.reduce((sum, v) => sum + Math.abs(v), 0) / rightVel.length;
+                    const velRatio = Math.min(leftVelAvg, rightVelAvg) / Math.max(leftVelAvg, rightVelAvg);
+                    
+                    console.warn('%c[观察向量检查] JointVel 对称性', 'color: orange; font-weight: bold;', {
+                      leftAvg: leftVelAvg.toFixed(4),
+                      rightAvg: rightVelAvg.toFixed(4),
+                      ratio: velRatio.toFixed(4),
+                      status: velRatio > 0.7 ? '✅ 对称' : '❌ 不对称',
+                      note: velRatio < 0.7 ? '⚠️ 关节速度不对称可能导致策略输出不对称' : ''
+                    });
+                  }
+                  
+                  // Check PrevActions symmetry
+                  const prevActionsObs = this.obsModules[5]; // PrevActions
+                  if (prevActionsObs) {
+                    const prevActions = prevActionsObs.compute(obsState);
+                    // PrevActions is flattened: [step0_joint0, step0_joint1, ..., step0_joint28, step1_joint0, ...]
+                    // For history_steps=1, it's just [joint0, joint1, ..., joint28]
+                    // For history_steps>1, we need to check the first step (most recent)
+                    const historySteps = prevActionsObs.steps || 1;
+                    const step0Offset = 0; // First step (most recent)
+                    const leftPrev = leftLegIndices.map(i => prevActions[step0Offset * this.numActions + i]);
+                    const rightPrev = rightLegIndices.map(i => prevActions[step0Offset * this.numActions + i]);
+                    const leftPrevAvg = leftPrev.reduce((sum, v) => sum + Math.abs(v), 0) / leftPrev.length;
+                    const rightPrevAvg = rightPrev.reduce((sum, v) => sum + Math.abs(v), 0) / rightPrev.length;
+                    const prevRatio = Math.min(leftPrevAvg, rightPrevAvg) / Math.max(leftPrevAvg, rightPrevAvg);
+                    
+                    console.warn('%c[观察向量检查] PrevActions 对称性', 'color: orange; font-weight: bold;', {
+                      leftAvg: leftPrevAvg.toFixed(4),
+                      rightAvg: rightPrevAvg.toFixed(4),
+                      ratio: prevRatio.toFixed(4),
+                      status: prevRatio > 0.7 ? '✅ 对称' : '❌ 不对称',
+                      note: prevRatio < 0.7 ? '⚠️ 前一步动作不对称可能导致策略输出不对称' : ''
+                    });
+                  }
+                } catch (e) {
+                  console.warn('[观察向量检查] 出错:', e);
+                }
+              }
             }
           }
         }
