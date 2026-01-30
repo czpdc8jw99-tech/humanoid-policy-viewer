@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.24: Add auto-diagnostics after policy initialization)"
+name: "Deploy to GitHub Pages (v9.0.25: Fix NaN in action symmetry check when actions are zero)"
 
 on:
   push:

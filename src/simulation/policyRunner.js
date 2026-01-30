@@ -205,13 +205,25 @@ export class PolicyRunner {
         const rightLegIndices = [1, 4, 7, 10, 14, 18];
         const leftAvg = leftLegIndices.reduce((sum, i) => sum + Math.abs(actions[i]), 0) / leftLegIndices.length;
         const rightAvg = rightLegIndices.reduce((sum, i) => sum + Math.abs(actions[i]), 0) / rightLegIndices.length;
-        const ratio = Math.min(leftAvg, rightAvg) / Math.max(leftAvg, rightAvg);
+        
+        // Handle case where both averages are zero (initial state before inference)
+        let ratio, status, note;
+        if (leftAvg === 0 && rightAvg === 0) {
+          ratio = 1.0; // Perfect symmetry when both are zero
+          status = '✅';
+          note = '初始状态（动作值全为0，策略尚未推理）';
+        } else {
+          ratio = Math.min(leftAvg, rightAvg) / Math.max(leftAvg, rightAvg);
+          status = ratio > 0.7 ? '✅' : '❌';
+          note = ratio < 0.7 ? '⚠️ 动作严重不对称' : '';
+        }
+        
         console.log('[自动诊断] Action Symmetry:', {
           leftLegAvg: leftAvg.toFixed(4),
           rightLegAvg: rightAvg.toFixed(4),
           symmetryRatio: ratio.toFixed(4),
-          status: ratio > 0.7 ? '✅' : '❌',
-          note: ratio < 0.7 ? '⚠️ 动作严重不对称' : ''
+          status: status,
+          note: note
         });
       }
       
