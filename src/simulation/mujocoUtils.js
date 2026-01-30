@@ -258,9 +258,14 @@ export async function reloadPolicy(policy_path, options = {}) {
 
   this.simulation.resetData();
   
+  // Set initial root position height to 0.8 (matching XML pelvis pos)
+  const qpos = this.simulation.qpos;
+  if (qpos.length >= 3) {
+    qpos[2] = 0.8; // Z coordinate (height)
+  }
+  
   // Set initial joint positions to default_joint_pos if available (for loco policy)
   if (this.defaultJposPolicy && this.qpos_adr_policy && this.qpos_adr_policy.length > 0) {
-    const qpos = this.simulation.qpos;
     for (let i = 0; i < this.numActions; i++) {
       const qposAdr = this.qpos_adr_policy[i];
       if (qposAdr >= 0 && qposAdr < qpos.length) {
