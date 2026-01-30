@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.15: Increase action_scale from 0.25 to 0.5 to improve balance control)"
+name: "Deploy to GitHub Pages (v9.0.16: Remove tanh squash - estimated raw output ~1.86, tanh compresses action range)"
 
 on:
   push:

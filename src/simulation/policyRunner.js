@@ -24,6 +24,7 @@ export class PolicyRunner {
     this.isInferencing = false;
     this.lastActions = new Float32Array(this.numActions);
     this._warmupDone = false; // Track if LSTM warmup has been completed
+    this._rawOutputRangeLogged = false; // Track if raw output range has been logged
 
     this.tracking = null;
     if (config.tracking) {
@@ -120,6 +121,7 @@ export class PolicyRunner {
     // Run 50 warmup inferences (matching original Python code)
     console.log('%c[PolicyRunner] Warming up LSTM/internal state (50 iterations)...', 'color: cyan; font-weight: bold;');
     const warmupCount = 50;
+    let warmupRawOutputLogged = false;
     for (let i = 0; i < warmupCount; i++) {
       // Prepare input dict with zero observation
       const inputDict = { ...this.inputDict };
@@ -127,6 +129,20 @@ export class PolicyRunner {
       
       try {
         const [result, carry] = await this.module.runInference(inputDict);
+        // Log raw output range from warmup (first inference only)
+        if (!warmupRawOutputLogged && result['action']) {
+          const warmupAction = result['action']?.data || result['action'];
+          const warmupArray = Array.isArray(warmupAction) ? warmupAction : Array.from(warmupAction);
+          const warmupMin = Math.min(...warmupArray);
+          const warmupMax = Math.max(...warmupArray);
+          const warmupMean = warmupArray.reduce((a, b) => a + b, 0) / warmupArray.length;
+          console.log('%c=== [PolicyRunner] Raw output range from WARMUP (BEFORE tanh/clip) ===', 'color: magenta; font-weight: bold; font-size: 14px;');
+          console.log('Min:', warmupMin.toFixed(4));
+          console.log('Max:', warmupMax.toFixed(4));
+          console.log('Mean:', warmupMean.toFixed(4));
+          console.log('Range:', `[${warmupMin.toFixed(2)}, ${warmupMax.toFixed(2)}]`);
+          warmupRawOutputLogged = true;
+        }
         // Update inputDict with carry (for recurrent models)
         if (carry && Object.keys(carry).length > 0) {
           Object.assign(this.inputDict, carry);
@@ -212,6 +228,26 @@ export class PolicyRunner {
         obsDebug.push({ name: obs.constructor.name, size: obsArray.length, offset });
         offset += obsArray.length;
       }
+      
+      // Debug: Log observation values periodically (every 60 frames = ~1 second at 60fps)
+      if (!this._obsFrameCount) {
+        this._obsFrameCount = 0;
+      }
+      this._obsFrameCount++;
+      if (this._obsFrameCount % 60 === 0) {
+        const rootAngVel = obsForPolicy.slice(0, 3);
+        const gravity = obsForPolicy.slice(3, 6);
+        const command = obsForPolicy.slice(6, 9);
+        const gravityMag = Math.sqrt(gravity[0]**2 + gravity[1]**2 + gravity[2]**2);
+        const angVelMag = Math.sqrt(rootAngVel[0]**2 + rootAngVel[1]**2 + rootAngVel[2]**2);
+        console.log(`[PolicyRunner] Obs update (frame ${this._obsFrameCount}):`, {
+          gravity: Array.from(gravity).map(v => v.toFixed(3)),
+          gravityMag: gravityMag.toFixed(3),
+          angVel: Array.from(rootAngVel).map(v => v.toFixed(3)),
+          angVelMag: angVelMag.toFixed(3),
+          command: Array.from(command).map(v => v.toFixed(3))
+        });
+      }
       // Debug log for step 1 verification (first few steps only)
       if (!this._obsLogged) {
         // Extract joint positions and velocities from observation vector
@@ -294,6 +330,24 @@ export class PolicyRunner {
       const action = result['action']?.data;
       if (!action || action.length !== this.numActions) {
         throw new Error('PolicyRunner received invalid action output');
+      }
+      
+      // Debug: Log raw policy output range (before tanh/clip) - first time only
+      if (!this._rawOutputRangeLogged) {
+        const rawArray = Array.isArray(action) ? action : Array.from(action);
+        const rawMin = Math.min(...rawArray);
+        const rawMax = Math.max(...rawArray);
+        const rawMean = rawArray.reduce((a, b) => a + b, 0) / rawArray.length;
+        const rawStd = Math.sqrt(rawArray.reduce((sum, x) => sum + Math.pow(x - rawMean, 2), 0) / rawArray.length);
+        console.log('%c=== [PolicyRunner] Raw policy output range (BEFORE tanh/clip) ===', 'color: magenta; font-weight: bold; font-size: 14px;');
+        console.log('Min:', rawMin.toFixed(4));
+        console.log('Max:', rawMax.toFixed(4));
+        console.log('Mean:', rawMean.toFixed(4));
+        console.log('Std:', rawStd.toFixed(4));
+        console.log('Range:', `[${rawMin.toFixed(2)}, ${rawMax.toFixed(2)}]`);
+        // Also log first few values for verification
+        console.log('First 6 raw values:', Array.from(rawArray.slice(0, 6)).map(v => v.toFixed(4)));
+        this._rawOutputRangeLogged = true;
       }
       
       // Simple debug: always log first action value to verify code is running
