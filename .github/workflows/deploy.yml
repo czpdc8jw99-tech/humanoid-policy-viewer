@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.19: Reduce action_scale to 0.65 and set initial height to 0.8m)"
+name: "Deploy to GitHub Pages (v9.0.20: Reduce action_scale to 0.55 and verify initial height 0.8m)"
 
 on:
   push:

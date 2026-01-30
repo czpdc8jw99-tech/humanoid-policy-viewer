@@ -262,6 +262,9 @@ export async function reloadPolicy(policy_path, options = {}) {
   const qpos = this.simulation.qpos;
   if (qpos.length >= 3) {
     qpos[2] = 0.8; // Z coordinate (height)
+    console.log('[reloadPolicy] Set initial height to 0.8m, qpos[2] =', qpos[2]);
+  } else {
+    console.warn('[reloadPolicy] qpos.length < 3, cannot set initial height');
   }
   
   // Set initial joint positions to default_joint_pos if available (for loco policy)
