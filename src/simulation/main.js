@@ -1053,15 +1053,15 @@ export class MuJoCoDemo {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const pad = pads ? Array.from(pads).find((p) => p && p.connected) : null;
     if (!pad) {
-      this.cmd[0] = 0.0;
-      this.cmd[1] = 0.0;
-      this.cmd[2] = 0.0;
+      // CRITICAL FIX: Don't reset cmd if no gamepad - let test command from UI work
+      // Only reset gamepadState, but keep demo.cmd unchanged
       this.gamepadState.connected = false;
       this.gamepadState.index = null;
       this.gamepadState.id = '';
       this.gamepadState.axes = [];
       this.gamepadState.buttons = [];
       this.gamepadState.cmd = [0.0, 0.0, 0.0];
+      // Don't reset this.cmd - it may contain test command from UI
       return;
     }
 

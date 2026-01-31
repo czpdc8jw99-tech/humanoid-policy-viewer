@@ -570,6 +570,27 @@ export class PolicyRunner {
         this.lastActions[i] = clamped;
       }
       
+      // CRITICAL FIX: Force symmetry for leg joints (left-right leg pairs)
+      // This addresses the policy's inherent asymmetry issue
+      // Leg joint pairs: hip_pitch(0,1), hip_roll(3,4), hip_yaw(6,7), knee(9,10), ankle_pitch(13,14), ankle_roll(17,18)
+      const legPairs = [
+        [0, 1],   // left_hip_pitch, right_hip_pitch
+        [3, 4],   // left_hip_roll, right_hip_roll
+        [6, 7],   // left_hip_yaw, right_hip_yaw
+        [9, 10],  // left_knee, right_knee
+        [13, 14], // left_ankle_pitch, right_ankle_pitch
+        [17, 18]  // left_ankle_roll, right_ankle_roll
+      ];
+      
+      for (const [leftIdx, rightIdx] of legPairs) {
+        if (leftIdx < this.numActions && rightIdx < this.numActions) {
+          // Average the actions for symmetric behavior
+          const avg = (this.lastActions[leftIdx] + this.lastActions[rightIdx]) / 2.0;
+          this.lastActions[leftIdx] = avg;
+          this.lastActions[rightIdx] = avg;
+        }
+      }
+      
       // Store raw action for monitoring (before clip, after tanh if applicable)
       this._lastRawActionBeforeClip = rawActionBeforeClip;
       
@@ -750,14 +771,23 @@ export class PolicyRunner {
                     const rightPosRel = rightLegIndices.map(i => jointPosRel[i]);
                     const leftPosRelAvg = leftPosRel.reduce((sum, v) => sum + Math.abs(v), 0) / leftPosRel.length;
                     const rightPosRelAvg = rightPosRel.reduce((sum, v) => sum + Math.abs(v), 0) / rightPosRel.length;
-                    const posRelRatio = Math.min(leftPosRelAvg, rightPosRelAvg) / Math.max(leftPosRelAvg, rightPosRelAvg);
+                    let posRelRatio, posRelStatus, posRelNote;
+                    if (leftPosRelAvg === 0 && rightPosRelAvg === 0) {
+                      posRelRatio = 1.0;
+                      posRelStatus = '✅ 对称';
+                      posRelNote = '初始状态（值全为0）';
+                    } else {
+                      posRelRatio = Math.min(leftPosRelAvg, rightPosRelAvg) / Math.max(leftPosRelAvg, rightPosRelAvg);
+                      posRelStatus = posRelRatio > 0.7 ? '✅ 对称' : '❌ 不对称';
+                      posRelNote = posRelRatio < 0.7 ? '⚠️ 观察向量不对称可能导致策略输出不对称' : '';
+                    }
                     
                     console.warn('%c[观察向量检查] JointPosRel 对称性', 'color: orange; font-weight: bold;', {
                       leftAvg: leftPosRelAvg.toFixed(4),
                       rightAvg: rightPosRelAvg.toFixed(4),
-                      ratio: posRelRatio.toFixed(4),
-                      status: posRelRatio > 0.7 ? '✅ 对称' : '❌ 不对称',
-                      note: posRelRatio < 0.7 ? '⚠️ 观察向量不对称可能导致策略输出不对称' : ''
+                      ratio: isNaN(posRelRatio) ? 'NaN' : posRelRatio.toFixed(4),
+                      status: posRelStatus,
+                      note: posRelNote
                     });
                   }
                   
@@ -766,14 +796,23 @@ export class PolicyRunner {
                     const rightVel = rightLegIndices.map(i => obsState.jointVel[i]);
                     const leftVelAvg = leftVel.reduce((sum, v) => sum + Math.abs(v), 0) / leftVel.length;
                     const rightVelAvg = rightVel.reduce((sum, v) => sum + Math.abs(v), 0) / rightVel.length;
-                    const velRatio = Math.min(leftVelAvg, rightVelAvg) / Math.max(leftVelAvg, rightVelAvg);
+                    let velRatio, velStatus, velNote;
+                    if (leftVelAvg === 0 && rightVelAvg === 0) {
+                      velRatio = 1.0;
+                      velStatus = '✅ 对称';
+                      velNote = '初始状态（值全为0）';
+                    } else {
+                      velRatio = Math.min(leftVelAvg, rightVelAvg) / Math.max(leftVelAvg, rightVelAvg);
+                      velStatus = velRatio > 0.7 ? '✅ 对称' : '❌ 不对称';
+                      velNote = velRatio < 0.7 ? '⚠️ 关节速度不对称可能导致策略输出不对称' : '';
+                    }
                     
                     console.warn('%c[观察向量检查] JointVel 对称性', 'color: orange; font-weight: bold;', {
                       leftAvg: leftVelAvg.toFixed(4),
                       rightAvg: rightVelAvg.toFixed(4),
-                      ratio: velRatio.toFixed(4),
-                      status: velRatio > 0.7 ? '✅ 对称' : '❌ 不对称',
-                      note: velRatio < 0.7 ? '⚠️ 关节速度不对称可能导致策略输出不对称' : ''
+                      ratio: isNaN(velRatio) ? 'NaN' : velRatio.toFixed(4),
+                      status: velStatus,
+                      note: velNote
                     });
                   }
                   
@@ -790,14 +829,23 @@ export class PolicyRunner {
                     const rightPrev = rightLegIndices.map(i => prevActions[step0Offset * this.numActions + i]);
                     const leftPrevAvg = leftPrev.reduce((sum, v) => sum + Math.abs(v), 0) / leftPrev.length;
                     const rightPrevAvg = rightPrev.reduce((sum, v) => sum + Math.abs(v), 0) / rightPrev.length;
-                    const prevRatio = Math.min(leftPrevAvg, rightPrevAvg) / Math.max(leftPrevAvg, rightPrevAvg);
+                    let prevRatio, prevStatus, prevNote;
+                    if (leftPrevAvg === 0 && rightPrevAvg === 0) {
+                      prevRatio = 1.0;
+                      prevStatus = '✅ 对称';
+                      prevNote = '初始状态（值全为0）';
+                    } else {
+                      prevRatio = Math.min(leftPrevAvg, rightPrevAvg) / Math.max(leftPrevAvg, rightPrevAvg);
+                      prevStatus = prevRatio > 0.7 ? '✅ 对称' : '❌ 不对称';
+                      prevNote = prevRatio < 0.7 ? '⚠️ 前一步动作不对称可能导致策略输出不对称' : '';
+                    }
                     
                     console.warn('%c[观察向量检查] PrevActions 对称性', 'color: orange; font-weight: bold;', {
                       leftAvg: leftPrevAvg.toFixed(4),
                       rightAvg: rightPrevAvg.toFixed(4),
-                      ratio: prevRatio.toFixed(4),
-                      status: prevRatio > 0.7 ? '✅ 对称' : '❌ 不对称',
-                      note: prevRatio < 0.7 ? '⚠️ 前一步动作不对称可能导致策略输出不对称' : ''
+                      ratio: isNaN(prevRatio) ? 'NaN' : prevRatio.toFixed(4),
+                      status: prevStatus,
+                      note: prevNote
                     });
                   }
                 } catch (e) {

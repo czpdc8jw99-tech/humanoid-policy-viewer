@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.32: Add comprehensive policy call diagnostics)"
+name: "Deploy to GitHub Pages (v9.0.33: Fix command reset issue, add symmetry enforcement, reduce action_scale/clip)"
 
 on:
   push:
