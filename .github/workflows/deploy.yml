@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.35: Use default_joint_pos for zero command in loco policy only)"
+name: "Deploy to GitHub Pages (v9.0.36: Add motion sequence support for loco_mode policy)"
 
 on:
   push:

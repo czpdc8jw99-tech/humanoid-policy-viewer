@@ -59,6 +59,10 @@
       "file": "default.json"
     },
     {
+      "name": "default_loco",
+      "file": "default_loco.json"
+    },
+    {
       "name": "Balance_CMU_49_18_amass",
       "file": "49_18.json"
     },

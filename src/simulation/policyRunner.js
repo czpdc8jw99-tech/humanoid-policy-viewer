@@ -892,8 +892,47 @@ export class PolicyRunner {
       }
 
       const target = new Float32Array(this.numActions);
-      for (let i = 0; i < this.numActions; i++) {
-        target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
+      
+      // For loco_mode policy with tracking: use motion sequence as stable base
+      // Strategy still outputs full action values (not adjustments)
+      if (this.tracking && this.tracking.isReady()) {
+        const motionFrame = this.tracking.getFrame(this.tracking.refIdx);
+        if (motionFrame && motionFrame.jointPos) {
+          // Map motion joint positions to policy joint order
+          const motionJointPos = motionFrame.jointPos;
+          if (this.tracking.mapPolicyToDataset) {
+            // Use motion sequence as base, but strategy output is still full action value
+            for (let i = 0; i < this.numActions; i++) {
+              const datasetIdx = this.tracking.mapPolicyToDataset[i];
+              if (datasetIdx !== undefined && datasetIdx < motionJointPos.length) {
+                // Use motion joint position as base, add scaled action
+                target[i] = motionJointPos[datasetIdx] + this.actionScale[i] * this.lastActions[i];
+              } else {
+                // Fallback to default
+                target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
+              }
+            }
+          } else {
+            // No mapping needed, use motion positions directly
+            for (let i = 0; i < this.numActions; i++) {
+              if (i < motionJointPos.length) {
+                target[i] = motionJointPos[i] + this.actionScale[i] * this.lastActions[i];
+              } else {
+                target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
+              }
+            }
+          }
+        } else {
+          // Fallback to default if motion frame not available
+          for (let i = 0; i < this.numActions; i++) {
+            target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
+          }
+        }
+      } else {
+        // Original loco_mode behavior: use default_joint_pos as base
+        for (let i = 0; i < this.numActions; i++) {
+          target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
+        }
       }
 
       return target;

@@ -58,8 +58,15 @@ export class TrackingHelper {
       this.motions[name] = normalized;
     }
 
-    if (!this.motions.default) {
-      throw new Error('TrackingHelper requires a "default" motion');
+    // Support custom default motion name (e.g., "default_loco" for loco_mode)
+    this.defaultMotionName = config.default_motion || 'default';
+    
+    if (!this.motions[this.defaultMotionName]) {
+      // Fallback to 'default' if custom default motion not found
+      if (!this.motions.default) {
+        throw new Error(`TrackingHelper requires a "${this.defaultMotionName}" or "default" motion`);
+      }
+      this.defaultMotionName = 'default';
     }
 
     this.refJointPos = [];
@@ -67,7 +74,7 @@ export class TrackingHelper {
     this.refRootPos = [];
     this.refIdx = 0;
     this.refLen = 0;
-    this.currentName = 'default';
+    this.currentName = this.defaultMotionName;
     this.currentDone = true;
   }
 
@@ -123,7 +130,8 @@ export class TrackingHelper {
     if (!this.motions[name]) {
       return false;
     }
-    if ((this.currentName === 'default' && this.currentDone) || name === 'default') {
+    // Allow switching to default motion or from default motion when done
+    if ((this.currentName === this.defaultMotionName && this.currentDone) || name === this.defaultMotionName) {
       this._startMotionFromCurrent(name, state);
       return true;
     }
@@ -148,7 +156,7 @@ export class TrackingHelper {
       transitionLen,
       motionLen,
       inTransition,
-      isDefault: this.currentName === 'default'
+      isDefault: this.currentName === this.defaultMotionName || this.currentName === 'default'
     };
   }
 
@@ -182,7 +190,7 @@ export class TrackingHelper {
       };
     }
 
-    const defaultMotion = this.motions['default'];
+    const defaultMotion = this.motions[this.defaultMotionName] || this.motions['default'];
     const fallbackPos = defaultMotion?.rootPos?.[0] ?? new Float32Array([0.0, 0.0, 0.78]);
     const fallbackQuat = defaultMotion?.rootQuat?.[0] ?? [1.0, 0.0, 0.0, 0.0];
     const fallbackJoint = defaultMotion?.jointPos?.[0] ?? new Float32Array(this.nJoints);
