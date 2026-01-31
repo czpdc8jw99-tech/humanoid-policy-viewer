@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.33: Fix command reset issue, add symmetry enforcement, reduce action_scale/clip)"
+name: "Deploy to GitHub Pages (v9.0.34: Increase action_scale to 0.45 for better responsiveness)"
 
 on:
   push:
