@@ -369,6 +369,40 @@ export class PolicyRunner {
       throw new Error('PolicyRunner.step requires a state object');
     }
 
+    // CRITICAL FIX: Zero command mode for loco policy only - use default_joint_pos for stable standing
+    // Check if this is a loco policy (has Command observation module)
+    const hasCommandObs = this.obsModules.some(obs => obs.constructor.name === 'Command');
+    
+    if (hasCommandObs) {
+      // This is a loco policy - check if command is zero
+      const cmdMagnitude = Math.sqrt(
+        this.command[0]**2 + 
+        this.command[1]**2 + 
+        this.command[2]**2
+      );
+      
+      if (cmdMagnitude < 0.01) {
+        // Zero command: return default_joint_pos directly for stable standing
+        // This avoids using unstable policy output when robot should just stand still
+        const target = new Float32Array(this.numActions);
+        for (let i = 0; i < this.numActions; i++) {
+          target[i] = this.defaultJointPos[i];
+        }
+        
+        // Still update lastActions for monitoring (set to zero since no action from policy)
+        this.lastActions.fill(0.0);
+        
+        // Update PrevActions with zero actions (for next inference if command becomes non-zero)
+        for (const obs of this.obsModules) {
+          if (obs.constructor.name === 'PrevActions' && typeof obs.update === 'function') {
+            obs.update(state);
+          }
+        }
+        
+        return target;
+      }
+    }
+
     this.isInferencing = true;
     try {
       if (this.tracking) {

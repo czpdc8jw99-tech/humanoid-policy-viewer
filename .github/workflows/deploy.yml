@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.34: Increase action_scale to 0.45 for better responsiveness)"
+name: "Deploy to GitHub Pages (v9.0.35: Use default_joint_pos for zero command in loco policy only)"
 
 on:
   push:
