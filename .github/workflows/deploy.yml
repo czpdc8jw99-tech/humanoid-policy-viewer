@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.29: Add early frame monitoring and reduce action_clip to 5.0)"
+name: "Deploy to GitHub Pages (v9.0.31: Add test command UI for testing without gamepad)"
 
 on:
   push:

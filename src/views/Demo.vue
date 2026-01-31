@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v9.0.29</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v9.0.31</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -160,6 +160,95 @@
           </v-alert>
           <div class="text-caption mt-2">
             Gamepad: <span v-if="gamepadState.connected">connected ({{ gamepadCmdLabel }})</span><span v-else>not connected</span>
+          </div>
+          <!-- Test command controls (for testing without gamepad) -->
+          <v-divider class="my-2"/>
+          <div class="status-name">Test Commands</div>
+          <div class="text-caption mb-2">Set velocity commands for testing (vx, vy, wz)</div>
+          <v-row dense>
+            <v-col cols="4">
+              <v-text-field
+                v-model.number="testCmdVx"
+                type="number"
+                label="Vx"
+                density="compact"
+                hide-details
+                step="0.1"
+                min="-0.4"
+                max="0.7"
+                @update:modelValue="onTestCommandChange"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="4">
+              <v-text-field
+                v-model.number="testCmdVy"
+                type="number"
+                label="Vy"
+                density="compact"
+                hide-details
+                step="0.1"
+                min="-0.4"
+                max="0.4"
+                @update:modelValue="onTestCommandChange"
+              ></v-text-field>
+            </v-col>
+            <v-col cols="4">
+              <v-text-field
+                v-model.number="testCmdWz"
+                type="number"
+                label="Wz"
+                density="compact"
+                hide-details
+                step="0.1"
+                min="-1.57"
+                max="1.57"
+                @update:modelValue="onTestCommandChange"
+              ></v-text-field>
+            </v-col>
+          </v-row>
+          <div class="mt-2">
+            <v-btn
+              size="small"
+              variant="outlined"
+              color="primary"
+              density="compact"
+              @click="setTestCommand([0.0, 0.0, 0.0])"
+              class="mr-1"
+            >
+              Stop
+            </v-btn>
+            <v-btn
+              size="small"
+              variant="outlined"
+              color="primary"
+              density="compact"
+              @click="setTestCommand([0.3, 0.0, 0.0])"
+              class="mr-1"
+            >
+              Forward
+            </v-btn>
+            <v-btn
+              size="small"
+              variant="outlined"
+              color="primary"
+              density="compact"
+              @click="setTestCommand([0.0, 0.0, 0.5])"
+              class="mr-1"
+            >
+              Turn L
+            </v-btn>
+            <v-btn
+              size="small"
+              variant="outlined"
+              color="primary"
+              density="compact"
+              @click="setTestCommand([0.0, 0.0, -0.5])"
+            >
+              Turn R
+            </v-btn>
+          </div>
+          <div class="text-caption mt-2">
+            Current: vx={{ testCmdVx.toFixed(2) }}, vy={{ testCmdVy.toFixed(2) }}, wz={{ testCmdWz.toFixed(2) }}
           </div>
         </template>
 
@@ -546,6 +635,9 @@ export default {
     showSafariAlert: true,
     resize_listener: null,
     gamepadState: { connected: false, index: null, id: '', cmd: [0, 0, 0] },
+    testCmdVx: 0.0,
+    testCmdVy: 0.0,
+    testCmdWz: 0.0,
     // 多机器人配置 - v4.0
     // v8.0.3: 草稿(draft)数量，仅用于编辑，按“生成场景”才应用
     robotCountDraft: 1,
@@ -1668,6 +1760,39 @@ export default {
         return { added: [], skipped: [], invalid: [] };
       }
       return tracking.addMotions(motions, options);
+    },
+    setTestCommand(cmd) {
+      // Set test command values
+      this.testCmdVx = cmd[0] ?? 0.0;
+      this.testCmdVy = cmd[1] ?? 0.0;
+      this.testCmdWz = cmd[2] ?? 0.0;
+      this.onTestCommandChange();
+    },
+    onTestCommandChange() {
+      // Apply test command to policy runner (only if gamepad is not connected)
+      if (!this.demo) return;
+      
+      // Only use test command if gamepad is not connected
+      if (!this.gamepadState.connected) {
+        const cmd = [this.testCmdVx, this.testCmdVy, this.testCmdWz];
+        this.demo.cmd[0] = cmd[0];
+        this.demo.cmd[1] = cmd[1];
+        this.demo.cmd[2] = cmd[2];
+        
+        // Apply to policy runner(s)
+        const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
+        if (isMultiRobot) {
+          for (let i = 0; i < this.demo.policyRunners.length; i++) {
+            if (this.demo.policyRunners[i]?.setCommand) {
+              this.demo.policyRunners[i].setCommand(cmd);
+            }
+          }
+        } else {
+          if (this.demo.policyRunner?.setCommand) {
+            this.demo.policyRunner.setCommand(cmd);
+          }
+        }
+      }
     },
     requestMotion(name, robotIndex = null) {
       // v7.2.0: 支持为单个机器人设置 motion
