@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v9.0.31</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v9.0.32</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -1770,11 +1770,24 @@ export default {
     },
     onTestCommandChange() {
       // Apply test command to policy runner (only if gamepad is not connected)
-      if (!this.demo) return;
+      if (!this.demo) {
+        console.warn('[TestCommand] demo不存在，无法设置命令');
+        return;
+      }
       
       // Only use test command if gamepad is not connected
       if (!this.gamepadState.connected) {
         const cmd = [this.testCmdVx, this.testCmdVy, this.testCmdWz];
+        
+        // CRITICAL DEBUG: Log command setting
+        if (!this._testCmdDebugLogged) {
+          console.log('%c=== [测试命令] 设置命令值 ===', 'color: purple; font-weight: bold;');
+          console.log('命令值:', cmd);
+          console.log('demo是否存在:', !!this.demo);
+          console.log('demo.cmd是否存在:', !!this.demo.cmd);
+          this._testCmdDebugLogged = true;
+        }
+        
         this.demo.cmd[0] = cmd[0];
         this.demo.cmd[1] = cmd[1];
         this.demo.cmd[2] = cmd[2];
@@ -1782,16 +1795,28 @@ export default {
         // Apply to policy runner(s)
         const isMultiRobot = this.demo?.robotJointMappings?.length > 1 && Array.isArray(this.demo?.policyRunners);
         if (isMultiRobot) {
+          console.log('[TestCommand] 多机器人模式，设置命令到', this.demo.policyRunners.length, '个策略');
           for (let i = 0; i < this.demo.policyRunners.length; i++) {
             if (this.demo.policyRunners[i]?.setCommand) {
               this.demo.policyRunners[i].setCommand(cmd);
+              console.log(`[TestCommand] 机器人 ${i + 1} 命令已设置:`, Array.from(this.demo.policyRunners[i].command));
+            } else {
+              console.warn(`[TestCommand] 机器人 ${i + 1} 没有setCommand方法`);
             }
           }
         } else {
           if (this.demo.policyRunner?.setCommand) {
             this.demo.policyRunner.setCommand(cmd);
+            console.log('[TestCommand] 单机器人模式，命令已设置:', Array.from(this.demo.policyRunner.command));
+          } else {
+            console.warn('[TestCommand] 策略不存在或没有setCommand方法:', {
+              policyRunnerExists: !!this.demo.policyRunner,
+              hasSetCommand: typeof this.demo.policyRunner?.setCommand === 'function'
+            });
           }
         }
+      } else {
+        console.log('[TestCommand] 手柄已连接，忽略测试命令');
       }
     },
     requestMotion(name, robotIndex = null) {

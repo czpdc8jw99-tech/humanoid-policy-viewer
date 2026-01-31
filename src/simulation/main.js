@@ -571,7 +571,50 @@ export class MuJoCoDemo {
       }
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
+        // Update gamepad command (if gamepad connected, it will override test command)
         this._updateGamepadCommand();
+        // If no gamepad, test command from UI will be used (already set via demo.cmd)
+        
+        // CRITICAL DEBUG: Log command and policy runner status (first few frames only)
+        if (!this._policyCallDebugLogged) {
+          this._policyCallDebugLogged = false;
+        }
+        if (!this._policyCallDebugLogged) {
+          console.log('%c=== [策略调用诊断] 检查策略是否正确调用 ===', 'color: red; font-weight: bold; font-size: 14px;');
+          console.log('1. 策略加载状态:', {
+            hasPolicyRunner: !!hasPolicyRunner,
+            isMultiRobot: isMultiRobot,
+            policyRunnerExists: !!this.policyRunner,
+            policyRunnersLength: this.policyRunners?.length ?? 0,
+            currentPolicyPath: this.currentPolicyPath
+          });
+          console.log('2. 当前命令值:', {
+            demoCmd: Array.from(this.cmd),
+            cmdMagnitude: Math.sqrt(this.cmd[0]**2 + this.cmd[1]**2 + this.cmd[2]**2)
+          });
+          if (isMultiRobot) {
+            for (let i = 0; i < this.policyRunners.length; i++) {
+              const pr = this.policyRunners[i];
+              console.log(`3. 机器人 ${i + 1} 策略状态:`, {
+                exists: !!pr,
+                hasSetCommand: typeof pr?.setCommand === 'function',
+                hasStep: typeof pr?.step === 'function',
+                command: pr ? Array.from(pr.command) : null,
+                lastActions: pr ? Array.from(pr.lastActions).slice(0, 6) : null
+              });
+            }
+          } else {
+            console.log('3. 单机器人策略状态:', {
+              exists: !!this.policyRunner,
+              hasSetCommand: typeof this.policyRunner?.setCommand === 'function',
+              hasStep: typeof this.policyRunner?.step === 'function',
+              command: this.policyRunner ? Array.from(this.policyRunner.command) : null,
+              lastActions: this.policyRunner ? Array.from(this.policyRunner.lastActions).slice(0, 6) : null
+            });
+          }
+          this._policyCallDebugLogged = true;
+        }
+        
         // 状态读取和推理 (v7.0.9: 每个机器人使用独立的policyRunner，添加详细日志)
         let actionTargets = [];
         if (isMultiRobot) {
@@ -622,8 +665,53 @@ export class MuJoCoDemo {
           // 单机器人模式：使用原有方法
           const state = this.readPolicyState();
           try {
+            // CRITICAL DEBUG: Log before and after setCommand/step
+            if (!this._singleRobotDebugLogged) {
+              console.log('%c=== [单机器人模式] 策略调用前状态 ===', 'color: orange; font-weight: bold;');
+              console.log('命令值:', Array.from(this.cmd));
+              console.log('策略是否存在:', !!this.policyRunner);
+              console.log('策略是否有setCommand方法:', typeof this.policyRunner?.setCommand === 'function');
+              console.log('策略是否有step方法:', typeof this.policyRunner?.step === 'function');
+              this._singleRobotDebugLogged = true;
+            }
+            
             this.policyRunner.setCommand?.(this.cmd);
+            
+            // Verify command was set
+            if (!this._commandVerifyLogged && this.policyRunner) {
+              console.log('%c=== [命令验证] setCommand后的命令值 ===', 'color: cyan; font-weight: bold;');
+              console.log('策略中的命令:', Array.from(this.policyRunner.command));
+              console.log('demo.cmd:', Array.from(this.cmd));
+              const cmdMatch = Math.abs(this.policyRunner.command[0] - this.cmd[0]) < 0.001 &&
+                               Math.abs(this.policyRunner.command[1] - this.cmd[1]) < 0.001 &&
+                               Math.abs(this.policyRunner.command[2] - this.cmd[2]) < 0.001;
+              console.log('命令是否匹配:', cmdMatch ? '✅' : '❌');
+              this._commandVerifyLogged = true;
+            }
+            
             this.actionTarget = await this.policyRunner.step(state);
+            
+            // CRITICAL DEBUG: Log after step
+            if (!this._stepResultLogged) {
+              console.log('%c=== [推理结果] step()返回的actionTarget ===', 'color: green; font-weight: bold;');
+              console.log('actionTarget是否存在:', !!this.actionTarget);
+              console.log('actionTarget类型:', typeof this.actionTarget);
+              console.log('actionTarget是否为数组:', Array.isArray(this.actionTarget));
+              console.log('actionTarget是否为Float32Array:', this.actionTarget instanceof Float32Array);
+              console.log('actionTarget长度:', this.actionTarget?.length);
+              if (this.actionTarget && this.actionTarget.length > 0) {
+                console.log('actionTarget前6个值:', Array.from(this.actionTarget).slice(0, 6));
+                console.log('actionTarget范围:', {
+                  min: Math.min(...Array.from(this.actionTarget)),
+                  max: Math.max(...Array.from(this.actionTarget)),
+                  avg: Array.from(this.actionTarget).reduce((a, b) => a + b, 0) / this.actionTarget.length
+                });
+              } else {
+                console.error('❌ actionTarget为空或长度为0！');
+              }
+              this._stepResultLogged = true;
+            }
+            
             actionTargets = [this.actionTarget]; // 保持数组格式一致
             
             // Debug: Log action values immediately after inference
@@ -746,6 +834,28 @@ export class MuJoCoDemo {
               }
             } else {
               // 单机器人模式（原有逻辑）
+              // CRITICAL DEBUG: Verify actionTarget is being applied
+              if (!this._actionApplyDebugLogged) {
+                console.log('%c=== [动作应用] 检查actionTarget是否被应用 ===', 'color: magenta; font-weight: bold;');
+                console.log('actionTarget是否存在:', !!this.actionTarget);
+                console.log('actionTarget长度:', this.actionTarget?.length);
+                console.log('ctrl_adr_policy长度:', this.ctrl_adr_policy?.length);
+                if (this.actionTarget && this.ctrl_adr_policy && this.ctrl_adr_policy.length > 0) {
+                  console.log('前6个关节的目标位置:', 
+                    Array.from({length: Math.min(6, this.actionTarget.length)}, (_, i) => ({
+                      policyIdx: i,
+                      jointName: this.policyJointNames?.[i] ?? 'unknown',
+                      targetJpos: this.actionTarget[i],
+                      ctrlAdr: this.ctrl_adr_policy[i],
+                      currentQpos: this.simulation.qpos[this.qpos_adr_policy?.[i] ?? -1],
+                      kp: this.kpPolicy?.[i] ?? 0,
+                      kd: this.kdPolicy?.[i] ?? 0
+                    }))
+                  );
+                }
+                this._actionApplyDebugLogged = true;
+              }
+              
               // Debug: Log action values for loco policy (first few steps only)
               if (this._actionValueLogged === undefined) {
                 this._actionValueLogged = false;

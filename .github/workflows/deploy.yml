@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.31: Add test command UI for testing without gamepad)"
+name: "Deploy to GitHub Pages (v9.0.32: Add comprehensive policy call diagnostics)"
 
 on:
   push:
