@@ -604,27 +604,6 @@ export class PolicyRunner {
         this.lastActions[i] = clamped;
       }
       
-      // CRITICAL FIX: Force symmetry for leg joints (left-right leg pairs)
-      // This addresses the policy's inherent asymmetry issue
-      // Leg joint pairs: hip_pitch(0,1), hip_roll(3,4), hip_yaw(6,7), knee(9,10), ankle_pitch(13,14), ankle_roll(17,18)
-      const legPairs = [
-        [0, 1],   // left_hip_pitch, right_hip_pitch
-        [3, 4],   // left_hip_roll, right_hip_roll
-        [6, 7],   // left_hip_yaw, right_hip_yaw
-        [9, 10],  // left_knee, right_knee
-        [13, 14], // left_ankle_pitch, right_ankle_pitch
-        [17, 18]  // left_ankle_roll, right_ankle_roll
-      ];
-      
-      for (const [leftIdx, rightIdx] of legPairs) {
-        if (leftIdx < this.numActions && rightIdx < this.numActions) {
-          // Average the actions for symmetric behavior
-          const avg = (this.lastActions[leftIdx] + this.lastActions[rightIdx]) / 2.0;
-          this.lastActions[leftIdx] = avg;
-          this.lastActions[rightIdx] = avg;
-        }
-      }
-      
       // Store raw action for monitoring (before clip, after tanh if applicable)
       this._lastRawActionBeforeClip = rawActionBeforeClip;
       
@@ -891,48 +870,11 @@ export class PolicyRunner {
         }
       }
 
+      // Original LocoMode behavior: target = default_joint_pos + action_scale * action
+      // This matches the original Python code: loco_action = self.action * self.action_scale + self.default_angles
       const target = new Float32Array(this.numActions);
-      
-      // For loco_mode policy with tracking: use motion sequence as stable base
-      // Strategy still outputs full action values (not adjustments)
-      if (this.tracking && this.tracking.isReady()) {
-        const motionFrame = this.tracking.getFrame(this.tracking.refIdx);
-        if (motionFrame && motionFrame.jointPos) {
-          // Map motion joint positions to policy joint order
-          const motionJointPos = motionFrame.jointPos;
-          if (this.tracking.mapPolicyToDataset) {
-            // Use motion sequence as base, but strategy output is still full action value
-            for (let i = 0; i < this.numActions; i++) {
-              const datasetIdx = this.tracking.mapPolicyToDataset[i];
-              if (datasetIdx !== undefined && datasetIdx < motionJointPos.length) {
-                // Use motion joint position as base, add scaled action
-                target[i] = motionJointPos[datasetIdx] + this.actionScale[i] * this.lastActions[i];
-              } else {
-                // Fallback to default
-                target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
-              }
-            }
-          } else {
-            // No mapping needed, use motion positions directly
-            for (let i = 0; i < this.numActions; i++) {
-              if (i < motionJointPos.length) {
-                target[i] = motionJointPos[i] + this.actionScale[i] * this.lastActions[i];
-              } else {
-                target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
-              }
-            }
-          }
-        } else {
-          // Fallback to default if motion frame not available
-          for (let i = 0; i < this.numActions; i++) {
-            target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
-          }
-        }
-      } else {
-        // Original loco_mode behavior: use default_joint_pos as base
-        for (let i = 0; i < this.numActions; i++) {
-          target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
-        }
+      for (let i = 0; i < this.numActions; i++) {
+        target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];
       }
 
       return target;

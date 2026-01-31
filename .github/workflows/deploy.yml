@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.36: Add motion sequence support for loco_mode policy)"
+name: "Deploy to GitHub Pages (v9.0.37: Restore original LocoMode design without motion sequences)"
 
 on:
   push:
