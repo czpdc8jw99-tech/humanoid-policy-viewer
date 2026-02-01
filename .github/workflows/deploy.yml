@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.43: Fix critical index mismatch - create motor-ordered address arrays)"
+name: "Deploy to GitHub Pages (v9.0.44: Fix left/right leg asymmetry - improve action reordering and address mapping)"
 
 on:
   push:

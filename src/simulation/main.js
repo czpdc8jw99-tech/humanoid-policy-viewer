@@ -955,9 +955,14 @@ export class MuJoCoDemo {
               // Key: joint2motor_idx[i] is motor index, ctrl_adr_policy[motorIdx] is the MuJoCo actuator index
               
               // Create reordered action array (policy order -> motor order)
+              // CRITICAL: Match Python LocoMode.py line 98-101 exactly
+              // Python: action_reorder[motor_idx] = loco_action[i] where motor_idx = joint2motor_idx[i]
               let actionReordered = null;
               if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.actionTarget) {
                 actionReordered = new Float32Array(this.numActions);
+                // Initialize with NaN to detect unmapped indices
+                actionReordered.fill(NaN);
+                
                 for (let i = 0; i < this.numActions; i++) {
                   const motorIdx = this.joint2motorIdx[i];
                   if (motorIdx >= 0 && motorIdx < this.numActions) {
@@ -965,11 +970,40 @@ export class MuJoCoDemo {
                     actionReordered[motorIdx] = this.actionTarget[i];
                   } else {
                     console.warn(`[Action Apply] Invalid motor index ${motorIdx} at policy index ${i}`);
-                    // Fallback: use direct mapping
-                    if (motorIdx >= 0 && motorIdx < this.numActions) {
-                      actionReordered[motorIdx] = this.actionTarget[i];
+                  }
+                }
+                
+                // Debug: Check for unmapped motor indices (first time only)
+                if (!this._actionReorderDebugLogged) {
+                  const unmapped = [];
+                  for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+                    if (isNaN(actionReordered[motorIdx])) {
+                      unmapped.push(motorIdx);
                     }
                   }
+                  if (unmapped.length > 0) {
+                    console.warn(`[Action Apply] Unmapped motor indices: ${unmapped.join(', ')}`);
+                  }
+                  
+                  // Debug: Check left/right leg action values
+                  const leftLegPolicyIndices = [0, 3, 6, 9, 13, 17];
+                  const rightLegPolicyIndices = [1, 4, 7, 10, 14, 18];
+                  const leftLegMotorIndices = leftLegPolicyIndices.map(i => this.joint2motorIdx[i]);
+                  const rightLegMotorIndices = rightLegPolicyIndices.map(i => this.joint2motorIdx[i]);
+                  
+                  console.log('[Action Apply Debug] Left leg mapping:');
+                  leftLegPolicyIndices.forEach((policyIdx, idx) => {
+                    const motorIdx = leftLegMotorIndices[idx];
+                    console.log(`  策略${policyIdx} (${this.policyJointNames[policyIdx]}) -> motorIdx=${motorIdx}, actionTarget=${this.actionTarget[policyIdx].toFixed(4)}, actionReordered=${actionReordered[motorIdx].toFixed(4)}`);
+                  });
+                  
+                  console.log('[Action Apply Debug] Right leg mapping:');
+                  rightLegPolicyIndices.forEach((policyIdx, idx) => {
+                    const motorIdx = rightLegMotorIndices[idx];
+                    console.log(`  策略${policyIdx} (${this.policyJointNames[policyIdx]}) -> motorIdx=${motorIdx}, actionTarget=${this.actionTarget[policyIdx].toFixed(4)}, actionReordered=${actionReordered[motorIdx].toFixed(4)}`);
+                  });
+                  
+                  this._actionReorderDebugLogged = true;
                 }
               }
               
@@ -979,18 +1013,64 @@ export class MuJoCoDemo {
               // instead of policy-ordered arrays (qpos_adr_policy, qvel_adr_policy, ctrl_adr_policy)
               for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
                 // Get MuJoCo addresses for this motor index using motor-ordered arrays
-                const qpos_adr = (this.qpos_adr_motor && this.qpos_adr_motor[motorIdx] !== undefined) 
-                  ? this.qpos_adr_motor[motorIdx] 
-                  : this.qpos_adr_policy[motorIdx];
-                const qvel_adr = (this.qvel_adr_motor && this.qvel_adr_motor[motorIdx] !== undefined) 
-                  ? this.qvel_adr_motor[motorIdx] 
-                  : this.qvel_adr_policy[motorIdx];
-                const ctrl_adr = (this.ctrl_adr_motor && this.ctrl_adr_motor[motorIdx] !== undefined) 
-                  ? this.ctrl_adr_motor[motorIdx] 
-                  : this.ctrl_adr_policy[motorIdx];
+                // CRITICAL: qpos_adr_motor, qvel_adr_motor, ctrl_adr_motor are initialized with -1 for unmapped indices
+                let qpos_adr = -1;
+                let qvel_adr = -1;
+                let ctrl_adr = -1;
+                
+                if (this.qpos_adr_motor && this.qpos_adr_motor[motorIdx] >= 0) {
+                  qpos_adr = this.qpos_adr_motor[motorIdx];
+                  qvel_adr = this.qvel_adr_motor[motorIdx];
+                  ctrl_adr = this.ctrl_adr_motor[motorIdx];
+                } else if (this.joint2motorIdx) {
+                  // Fallback: find policy index that maps to this motorIdx
+                  const policyIdx = this.joint2motorIdx.indexOf(motorIdx);
+                  if (policyIdx >= 0 && policyIdx < this.numActions) {
+                    qpos_adr = this.qpos_adr_policy[policyIdx];
+                    qvel_adr = this.qvel_adr_policy[policyIdx];
+                    ctrl_adr = this.ctrl_adr_policy[policyIdx];
+                  } else {
+                    // Last resort: assume direct mapping (policy order = motor order)
+                    qpos_adr = this.qpos_adr_policy[motorIdx] ?? -1;
+                    qvel_adr = this.qvel_adr_policy[motorIdx] ?? -1;
+                    ctrl_adr = this.ctrl_adr_policy[motorIdx] ?? -1;
+                  }
+                } else {
+                  // No joint2motorIdx: use direct mapping
+                  qpos_adr = this.qpos_adr_policy[motorIdx] ?? -1;
+                  qvel_adr = this.qvel_adr_policy[motorIdx] ?? -1;
+                  ctrl_adr = this.ctrl_adr_policy[motorIdx] ?? -1;
+                }
+                
+                // Skip if addresses are invalid
+                if (qpos_adr < 0 || qvel_adr < 0 || ctrl_adr < 0) {
+                  if (!this._invalidAddressLogged) {
+                    console.warn(`[Action Apply] Invalid addresses for motorIdx ${motorIdx}: qpos=${qpos_adr}, qvel=${qvel_adr}, ctrl=${ctrl_adr}`);
+                    this._invalidAddressLogged = true;
+                  }
+                  continue;
+                }
 
-                // Use reordered action if available, otherwise use original (by motor index)
-                const targetJpos = actionReordered ? actionReordered[motorIdx] : (this.actionTarget ? this.actionTarget[motorIdx] : 0.0);
+                // Use reordered action if available
+                // CRITICAL: actionTarget is in POLICY order, but we need MOTOR order
+                // So we MUST use actionReordered when joint2motorIdx exists
+                // If actionReordered doesn't exist, we need to find the policy index that maps to this motorIdx
+                let targetJpos = 0.0;
+                if (actionReordered && !isNaN(actionReordered[motorIdx])) {
+                  targetJpos = actionReordered[motorIdx];
+                } else if (this.joint2motorIdx && this.actionTarget) {
+                  // Fallback: find policy index that maps to this motorIdx
+                  const policyIdx = this.joint2motorIdx.indexOf(motorIdx);
+                  if (policyIdx >= 0 && policyIdx < this.numActions) {
+                    targetJpos = this.actionTarget[policyIdx];
+                  } else {
+                    console.warn(`[Action Apply] No policy index maps to motorIdx ${motorIdx}`);
+                    targetJpos = 0.0;
+                  }
+                } else if (this.actionTarget) {
+                  // Last resort: assume direct mapping (policy order = motor order)
+                  targetJpos = this.actionTarget[motorIdx] ?? 0.0;
+                }
                 
                 // Use reordered PD gains if available (matching Python kps_reorder/kds_reorder)
                 const kp = (this.kpPolicyReorder && this.kpPolicyReorder[motorIdx] !== undefined) 

@@ -246,6 +246,11 @@ export async function reloadPolicy(policy_path, options = {}) {
     this.qvel_adr_motor = new Int32Array(this.numActions);
     this.ctrl_adr_motor = new Int32Array(this.numActions);
     
+    // Initialize with -1 to detect unmapped motor indices
+    this.qpos_adr_motor.fill(-1);
+    this.qvel_adr_motor.fill(-1);
+    this.ctrl_adr_motor.fill(-1);
+    
     // Map from policy order to motor order
     for (let i = 0; i < this.numActions; i++) {
       const motorIdx = joint2motorIdx[i];
@@ -257,6 +262,39 @@ export async function reloadPolicy(policy_path, options = {}) {
         console.warn(`[Joint Mapping] Invalid motor index ${motorIdx} at policy index ${i}, cannot create motor-ordered arrays`);
       }
     }
+    
+    // Verify all motor indices are mapped
+    const unmappedMotorIndices = [];
+    for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+      if (this.qpos_adr_motor[motorIdx] === -1) {
+        unmappedMotorIndices.push(motorIdx);
+      }
+    }
+    if (unmappedMotorIndices.length > 0) {
+      console.warn(`[Joint Mapping] ⚠️ Unmapped motor indices: ${unmappedMotorIndices.join(', ')}`);
+    } else {
+      console.log('[Joint Mapping] ✅ All motor indices are mapped');
+    }
+    
+    // Debug: Log left/right leg mapping (first time only)
+    if (!this._motorMappingDebugLogged) {
+      const leftLegPolicyIndices = [0, 3, 6, 9, 13, 17];
+      const rightLegPolicyIndices = [1, 4, 7, 10, 14, 18];
+      console.log('[Joint Mapping Debug] Left leg (policy -> motor -> ctrl_adr):');
+      leftLegPolicyIndices.forEach(policyIdx => {
+        const motorIdx = joint2motorIdx[policyIdx];
+        const ctrlAdr = this.ctrl_adr_motor[motorIdx];
+        console.log(`  策略${policyIdx} (${policyJointNames[policyIdx]}) -> motorIdx=${motorIdx} -> ctrlAdr=${ctrlAdr}`);
+      });
+      console.log('[Joint Mapping Debug] Right leg (policy -> motor -> ctrl_adr):');
+      rightLegPolicyIndices.forEach(policyIdx => {
+        const motorIdx = joint2motorIdx[policyIdx];
+        const ctrlAdr = this.ctrl_adr_motor[motorIdx];
+        console.log(`  策略${policyIdx} (${policyJointNames[policyIdx]}) -> motorIdx=${motorIdx} -> ctrlAdr=${ctrlAdr}`);
+      });
+      this._motorMappingDebugLogged = true;
+    }
+    
     console.log('[Joint Mapping] Motor-ordered address arrays created');
     
     // Verify that joint2motor_idx values are valid (should be 0-28)
