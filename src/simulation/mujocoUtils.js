@@ -197,6 +197,48 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.kdPolicy = toFloatArray(config.damping, this.numActions, 0.0);
   this.control_type = config.control_type ?? 'joint_position';
   
+  // Load cmd_scale from config (matching Python LocoMode.yaml cmd_scale)
+  const cmdScaleConfig = Array.isArray(config.cmd_scale) ? config.cmd_scale : [1.0, 1.0, 1.0];
+  if (cmdScaleConfig.length !== 3) {
+    console.warn('[reloadPolicy] cmd_scale must be array of length 3, using default [1.0, 1.0, 1.0]');
+    this.cmdScale = new Float32Array([1.0, 1.0, 1.0]);
+  } else {
+    this.cmdScale = new Float32Array(cmdScaleConfig);
+  }
+  
+  // Verify joint mapping if joint2motor_idx is provided (for loco policy)
+  const joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx : null;
+  if (joint2motorIdx && joint2motorIdx.length === this.numActions) {
+    // Verify that joint2motor_idx mapping is consistent with name-based mapping
+    // Python code uses joint2motor_idx to reorder actions from policy order to motor order
+    // JS code uses policy_joint_names to map directly to MuJoCo actuators
+    // This verification ensures both approaches are equivalent
+    console.log('[Joint Mapping] joint2motor_idx provided, verifying consistency with name-based mapping...');
+    const jointTransmission = this.mujoco.mjtTrn.mjTRN_JOINT.value;
+    const actuator2joint = [];
+    for (let i = 0; i < this.model.nu; i++) {
+      if (this.model.actuator_trntype[i] === jointTransmission) {
+        actuator2joint.push(this.model.actuator_trnid[2 * i]);
+      }
+    }
+    
+    // Check if name-based mapping matches joint2motor_idx expectation
+    let mappingConsistent = true;
+    for (let policyIdx = 0; policyIdx < this.numActions; policyIdx++) {
+      const expectedMotorIdx = joint2motorIdx[policyIdx];
+      const actualActuatorIdx = this.ctrl_adr_policy[policyIdx];
+      if (expectedMotorIdx !== actualActuatorIdx) {
+        console.warn(`[Joint Mapping] Mismatch at policy index ${policyIdx}: joint2motor_idx expects motor ${expectedMotorIdx}, but name-based mapping found actuator ${actualActuatorIdx}`);
+        mappingConsistent = false;
+      }
+    }
+    if (mappingConsistent) {
+      console.log('[Joint Mapping] ✅ Name-based mapping is consistent with joint2motor_idx');
+    } else {
+      console.warn('[Joint Mapping] ⚠️ Name-based mapping differs from joint2motor_idx - this may cause incorrect joint control');
+    }
+  }
+  
   // Debug: Log joint mapping for loco policy
   if (policy_path && policy_path.includes('loco') && this.model) {
     // Rebuild actuator2joint mapping for debug output
@@ -258,11 +300,12 @@ export async function reloadPolicy(policy_path, options = {}) {
 
   this.simulation.resetData();
   
-  // Set initial root position height to 0.8 (matching XML pelvis pos)
+  // Set initial root position height to 0.75 (matching g1.json init_state.pos[2])
+  // Note: Original Python code doesn't explicitly set height, but g1.json specifies 0.75
   const qpos = this.simulation.qpos;
   if (qpos.length >= 3) {
-    qpos[2] = 0.8; // Z coordinate (height)
-    console.log('[reloadPolicy] Set initial height to 0.8m, qpos[2] =', qpos[2]);
+    qpos[2] = 0.75; // Z coordinate (height) - matching g1.json init_state
+    console.log('[reloadPolicy] Set initial height to 0.75m, qpos[2] =', qpos[2]);
   } else {
     console.warn('[reloadPolicy] qpos.length < 3, cannot set initial height');
   }

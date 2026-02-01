@@ -202,6 +202,7 @@ export class MuJoCoDemo {
     this.followDistance = this.camera.position.distanceTo(this.controls.target);
 
     this.cmd = new Float32Array([0.0, 0.0, 0.0]); // [vx, vy, wz]
+    this.cmdScale = new Float32Array([1.0, 1.0, 1.0]); // cmd_scale from policy config
     this.gamepadState = {
       connected: false,
       index: null,
@@ -1079,16 +1080,17 @@ export class MuJoCoDemo {
     const vy = scaleBipolar(uVy, -0.4, 0.4);
     const wz = scaleBipolar(uWz, -1.57, 1.57);
 
-    this.cmd[0] = vx;
-    this.cmd[1] = vy;
-    this.cmd[2] = wz;
+    // Apply cmd_scale (matching Python LocoMode.py line 85: self.cmd = self.cmd * self.cmd_scale)
+    this.cmd[0] = vx * this.cmdScale[0];
+    this.cmd[1] = vy * this.cmdScale[1];
+    this.cmd[2] = wz * this.cmdScale[2];
 
     this.gamepadState.connected = true;
     this.gamepadState.index = pad.index ?? null;
     this.gamepadState.id = pad.id ?? '';
     this.gamepadState.axes = axes;
     this.gamepadState.buttons = buttons;
-    this.gamepadState.cmd = [vx, vy, wz];
+    this.gamepadState.cmd = [this.cmd[0], this.cmd[1], this.cmd[2]];
   }
 
   getGamepadState() {
