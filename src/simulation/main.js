@@ -1101,7 +1101,7 @@ export class MuJoCoDemo {
                 this.simulation.ctrl[ctrl_adr] = ctrlValue;
                 
                 // CRITICAL DEBUG: Log left/right leg control values (first few frames)
-                if (!this._ctrlValueDebugLogged) {
+                if (!this._ctrlValueDebugLogged && this.joint2motorIdx) {
                   const leftLegPolicyIndices = [0, 3, 6, 9, 13, 17];
                   const rightLegPolicyIndices = [1, 4, 7, 10, 14, 18];
                   const leftLegMotorIndices = leftLegPolicyIndices.map(i => this.joint2motorIdx[i]);
