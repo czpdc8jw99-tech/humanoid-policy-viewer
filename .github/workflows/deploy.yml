@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.47: Fix tracking policy - use policy order when joint2motorIdx doesn't exist)"
+name: "Deploy to GitHub Pages (v9.0.48: Fix policy switching - clear state and validate motor ordering)"
 
 on:
   push:

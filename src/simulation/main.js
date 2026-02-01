@@ -1019,7 +1019,30 @@ export class MuJoCoDemo {
               // CRITICAL FIX: Use different logic based on whether joint2motorIdx exists
               // - If joint2motorIdx exists (loco_mode): use motor order (qpos_adr_motor, actionReordered)
               // - If joint2motorIdx doesn't exist (tracking_policy): use policy order (qpos_adr_policy, actionTarget)
-              if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.qpos_adr_motor) {
+              // CRITICAL: Check all necessary variables exist and are valid before using motor order
+              const hasMotorOrdering = this.joint2motorIdx && 
+                                      this.joint2motorIdx.length === this.numActions &&
+                                      this.qpos_adr_motor &&
+                                      this.qvel_adr_motor &&
+                                      this.ctrl_adr_motor &&
+                                      this.kpPolicyReorder &&
+                                      this.kdPolicyReorder;
+              
+              // Additional validation: verify all motor indices are mapped (no -1 values)
+              let allMotorIndicesMapped = false;
+              if (hasMotorOrdering) {
+                allMotorIndicesMapped = true;
+                for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+                  if (this.qpos_adr_motor[motorIdx] < 0 || 
+                      this.qvel_adr_motor[motorIdx] < 0 || 
+                      this.ctrl_adr_motor[motorIdx] < 0) {
+                    allMotorIndicesMapped = false;
+                    break;
+                  }
+                }
+              }
+              
+              if (hasMotorOrdering && allMotorIndicesMapped) {
                 // Has joint2motorIdx: use motor order (loco_mode)
                 // Python outputs actions and kps/kds in motor order, so we iterate by motor index
                 for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
@@ -1359,7 +1382,25 @@ export class MuJoCoDemo {
     // Key understanding: joint2motor_idx[i] is motor index (0-28)
     // Python reads from motor index joint2motor_idx[i] into policy index i
     // So: qj[joint2motor_idx[i]] in Python = qpos[qpos_adr_motor[joint2motor_idx[i]]] in JS
-    if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.qpos_adr_motor) {
+    // CRITICAL: Check all necessary variables exist and are valid before using motor order
+    const hasMotorOrdering = this.joint2motorIdx && 
+                              this.joint2motorIdx.length === this.numActions &&
+                              this.qpos_adr_motor &&
+                              this.qvel_adr_motor;
+    
+    // Additional validation: verify all motor indices are mapped (no -1 values)
+    let allMotorIndicesMapped = false;
+    if (hasMotorOrdering) {
+      allMotorIndicesMapped = true;
+      for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+        if (this.qpos_adr_motor[motorIdx] < 0 || this.qvel_adr_motor[motorIdx] < 0) {
+          allMotorIndicesMapped = false;
+          break;
+        }
+      }
+    }
+    
+    if (hasMotorOrdering && allMotorIndicesMapped) {
       // Read from motor indices (joint2motor_idx) into policy order
       // Use motor-ordered address arrays (qpos_adr_motor, qvel_adr_motor)
       for (let i = 0; i < this.numActions; i++) {

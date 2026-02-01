@@ -108,6 +108,16 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.currentPolicyPath = policy_path;
   console.log('Reloading policy:', policy_path);
 
+  // CRITICAL FIX: Explicitly clear all joint2motorIdx-related state before loading new policy
+  // This ensures no state leakage when switching between policies with/without joint2motor_idx
+  this.joint2motorIdx = null;
+  this.kpPolicyReorder = null;
+  this.kdPolicyReorder = null;
+  this.qpos_adr_motor = null;
+  this.qvel_adr_motor = null;
+  this.ctrl_adr_motor = null;
+  console.log('[Policy Switch] Cleared all joint2motorIdx-related state');
+
   // 等待所有policyRunner完成推理 (v7.0.4)
   const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
   // v8.0.2: 若切回单机器人，清理多机残留状态（否则会出现 configs=1 但 runners/mappings>1）
@@ -272,6 +282,16 @@ export async function reloadPolicy(policy_path, options = {}) {
     }
     if (unmappedMotorIndices.length > 0) {
       console.warn(`[Joint Mapping] ⚠️ Unmapped motor indices: ${unmappedMotorIndices.join(', ')}`);
+      console.warn(`[Joint Mapping] ⚠️ Motor ordering incomplete, will fallback to policy order`);
+      // CRITICAL FIX: If there are unmapped indices, clear motor-ordered arrays to force policy order
+      // This prevents using incomplete motor ordering which would cause incorrect action application
+      this.joint2motorIdx = null;
+      this.kpPolicyReorder = null;
+      this.kdPolicyReorder = null;
+      this.qpos_adr_motor = null;
+      this.qvel_adr_motor = null;
+      this.ctrl_adr_motor = null;
+      console.warn(`[Joint Mapping] Cleared motor-ordered arrays due to unmapped indices`);
     } else {
       console.log('[Joint Mapping] ✅ All motor indices are mapped');
     }
