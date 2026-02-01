@@ -1401,16 +1401,27 @@ export class MuJoCoDemo {
     }
     
     if (hasMotorOrdering && allMotorIndicesMapped) {
-      // Read from motor indices (joint2motor_idx) into policy order
-      // Use motor-ordered address arrays (qpos_adr_motor, qvel_adr_motor)
+      // Match Python LocoMode.py: qj_obs[i] = qj[joint2motor_idx[i]]
+      // Python: qj is motor-ordered array, qj_obs is policy-ordered array
+      // Step 1: Read from MuJoCo into motor-ordered array (qj)
+      const qj_motor = new Float32Array(this.numActions);
+      const dqj_motor = new Float32Array(this.numActions);
+      for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+        const qposAdr = this.qpos_adr_motor[motorIdx];
+        const qvelAdr = this.qvel_adr_motor[motorIdx];
+        if (qposAdr >= 0 && qvelAdr >= 0) {
+          qj_motor[motorIdx] = qpos[qposAdr];
+          dqj_motor[motorIdx] = qvel[qvelAdr];
+        }
+      }
+      
+      // Step 2: Reorder from motor order to policy order (qj_obs)
+      // Python: qj_obs[i] = qj[joint2motor_idx[i]]
       for (let i = 0; i < this.numActions; i++) {
         const motorIdx = this.joint2motorIdx[i];
-        // motorIdx is the motor index (0-28), use motor-ordered address arrays
         if (motorIdx >= 0 && motorIdx < this.numActions) {
-          const qposAdr = this.qpos_adr_motor[motorIdx];
-          const qvelAdr = this.qvel_adr_motor[motorIdx];
-          jointPos[i] = qpos[qposAdr];
-          jointVel[i] = qvel[qvelAdr];
+          jointPos[i] = qj_motor[motorIdx];
+          jointVel[i] = dqj_motor[motorIdx];
         } else {
           // Fallback to direct mapping if invalid motor index
           console.warn(`[readPolicyState] Invalid motor index ${motorIdx} at policy index ${i}, using direct mapping`);
