@@ -1003,6 +1003,14 @@ export class MuJoCoDemo {
                     console.log(`  策略${policyIdx} (${this.policyJointNames[policyIdx]}) -> motorIdx=${motorIdx}, actionTarget=${this.actionTarget[policyIdx].toFixed(4)}, actionReordered=${actionReordered[motorIdx].toFixed(4)}`);
                   });
                   
+                  // Check symmetry of actionReordered
+                  const leftReordered = leftLegMotorIndices.map(motorIdx => actionReordered[motorIdx]);
+                  const rightReordered = rightLegMotorIndices.map(motorIdx => actionReordered[motorIdx]);
+                  const leftReorderedAvg = leftReordered.reduce((sum, v) => sum + Math.abs(v), 0) / leftReordered.length;
+                  const rightReorderedAvg = rightReordered.reduce((sum, v) => sum + Math.abs(v), 0) / rightReordered.length;
+                  const reorderedRatio = Math.min(leftReorderedAvg, rightReorderedAvg) / Math.max(leftReorderedAvg, rightReorderedAvg);
+                  console.log(`[Action Apply Debug] actionReordered 对称性: 左腿平均值=${leftReorderedAvg.toFixed(4)}, 右腿平均值=${rightReorderedAvg.toFixed(4)}, 比例=${reorderedRatio.toFixed(4)} ${reorderedRatio > 0.9 ? '✅' : '❌'}`);
+                  
                   this._actionReorderDebugLogged = true;
                 }
               }

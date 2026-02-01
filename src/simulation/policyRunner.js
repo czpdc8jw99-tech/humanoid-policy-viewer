@@ -478,6 +478,54 @@ export class PolicyRunner {
         const jointVel = obsForPolicy.slice(38, 67); // 29 joints
         const prevActions = obsForPolicy.slice(67, 96); // 29 joints
         
+        // CRITICAL DEBUG: Check left/right leg symmetry in observation vector
+        const leftLegIndices = [0, 3, 6, 9, 13, 17];
+        const rightLegIndices = [1, 4, 7, 10, 14, 18];
+        
+        console.log('%c=== [观察向量详细检查] 左右腿对称性 ===', 'color: cyan; font-weight: bold; font-size: 14px;');
+        
+        // JointPosRel
+        const leftJointPosRel = leftLegIndices.map(i => jointPosRel[i]);
+        const rightJointPosRel = rightLegIndices.map(i => jointPosRel[i]);
+        console.log('JointPosRel (相对关节位置):');
+        console.log('  左腿:', leftJointPosRel.map(v => v.toFixed(4)));
+        console.log('  右腿:', rightJointPosRel.map(v => v.toFixed(4)));
+        const leftPosRelAvg = leftJointPosRel.reduce((sum, v) => sum + Math.abs(v), 0) / leftJointPosRel.length;
+        const rightPosRelAvg = rightJointPosRel.reduce((sum, v) => sum + Math.abs(v), 0) / rightJointPosRel.length;
+        const posRelRatio = Math.min(leftPosRelAvg, rightPosRelAvg) / Math.max(leftPosRelAvg, rightPosRelAvg);
+        console.log(`  左腿平均值: ${leftPosRelAvg.toFixed(4)}, 右腿平均值: ${rightPosRelAvg.toFixed(4)}, 比例: ${posRelRatio.toFixed(4)} ${posRelRatio > 0.9 ? '✅' : '❌'}`);
+        
+        // JointVel
+        const leftJointVel = leftLegIndices.map(i => jointVel[i]);
+        const rightJointVel = rightLegIndices.map(i => jointVel[i]);
+        console.log('JointVel (关节速度):');
+        console.log('  左腿:', leftJointVel.map(v => v.toFixed(4)));
+        console.log('  右腿:', rightJointVel.map(v => v.toFixed(4)));
+        const leftVelAvg = leftJointVel.reduce((sum, v) => sum + Math.abs(v), 0) / leftJointVel.length;
+        const rightVelAvg = rightJointVel.reduce((sum, v) => sum + Math.abs(v), 0) / rightJointVel.length;
+        const velRatio = Math.min(leftVelAvg, rightVelAvg) / Math.max(leftVelAvg, rightVelAvg);
+        console.log(`  左腿平均值: ${leftVelAvg.toFixed(4)}, 右腿平均值: ${rightVelAvg.toFixed(4)}, 比例: ${velRatio.toFixed(4)} ${velRatio > 0.9 ? '✅' : '❌'}`);
+        
+        // PrevActions
+        const leftPrevActions = leftLegIndices.map(i => prevActions[i]);
+        const rightPrevActions = rightLegIndices.map(i => prevActions[i]);
+        console.log('PrevActions (前一步动作):');
+        console.log('  左腿:', leftPrevActions.map(v => v.toFixed(4)));
+        console.log('  右腿:', rightPrevActions.map(v => v.toFixed(4)));
+        const leftPrevAvg = leftPrevActions.reduce((sum, v) => sum + Math.abs(v), 0) / leftPrevActions.length;
+        const rightPrevAvg = rightPrevActions.reduce((sum, v) => sum + Math.abs(v), 0) / rightPrevActions.length;
+        const prevRatio = Math.min(leftPrevAvg, rightPrevAvg) / Math.max(leftPrevAvg, rightPrevAvg);
+        console.log(`  左腿平均值: ${leftPrevAvg.toFixed(4)}, 右腿平均值: ${rightPrevAvg.toFixed(4)}, 比例: ${prevRatio.toFixed(4)} ${prevRatio > 0.9 ? '✅' : '❌'}`);
+        
+        // RootAngVelB
+        console.log('RootAngVelB (根角速度):', Array.from(rootAngVel).map(v => v.toFixed(4)));
+        
+        // ProjectedGravityB
+        console.log('ProjectedGravityB (投影重力):', Array.from(gravity).map(v => v.toFixed(4)));
+        
+        // Command
+        console.log('Command (命令):', Array.from(command).map(v => v.toFixed(4)));
+        
         // Left leg indices: 0, 3, 6, 9, 13, 17
         // Right leg indices: 1, 4, 7, 10, 14, 18
         const leftLegIndices = [0, 3, 6, 9, 13, 17];
