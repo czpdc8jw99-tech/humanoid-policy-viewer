@@ -1099,6 +1099,82 @@ export class MuJoCoDemo {
                   }
                 }
                 this.simulation.ctrl[ctrl_adr] = ctrlValue;
+                
+                // CRITICAL DEBUG: Log left/right leg control values (first few frames)
+                if (!this._ctrlValueDebugLogged) {
+                  const leftLegPolicyIndices = [0, 3, 6, 9, 13, 17];
+                  const rightLegPolicyIndices = [1, 4, 7, 10, 14, 18];
+                  const leftLegMotorIndices = leftLegPolicyIndices.map(i => this.joint2motorIdx[i]);
+                  const rightLegMotorIndices = rightLegPolicyIndices.map(i => this.joint2motorIdx[i]);
+                  
+                  // Check if this motorIdx is a left or right leg motor
+                  const leftIdx = leftLegMotorIndices.indexOf(motorIdx);
+                  const rightIdx = rightLegMotorIndices.indexOf(motorIdx);
+                  
+                  if (leftIdx >= 0 || rightIdx >= 0) {
+                    if (!this._ctrlValueDebugFrameCount) {
+                      this._ctrlValueDebugFrameCount = 0;
+                      this._leftLegCtrlValues = [];
+                      this._rightLegCtrlValues = [];
+                    }
+                    this._ctrlValueDebugFrameCount++;
+                    
+                    if (leftIdx >= 0) {
+                      this._leftLegCtrlValues.push({
+                        motorIdx,
+                        policyIdx: leftLegPolicyIndices[leftIdx],
+                        jointName: this.policyJointNames[leftLegPolicyIndices[leftIdx]],
+                        ctrlAdr,
+                        targetJpos,
+                        currentJpos: this.simulation.qpos[qpos_adr],
+                        kp,
+                        kd,
+                        torque,
+                        ctrlValue
+                      });
+                    }
+                    if (rightIdx >= 0) {
+                      this._rightLegCtrlValues.push({
+                        motorIdx,
+                        policyIdx: rightLegPolicyIndices[rightIdx],
+                        jointName: this.policyJointNames[rightLegPolicyIndices[rightIdx]],
+                        ctrlAdr,
+                        targetJpos,
+                        currentJpos: this.simulation.qpos[qpos_adr],
+                        kp,
+                        kd,
+                        torque,
+                        ctrlValue
+                      });
+                    }
+                    
+                    // Log after collecting all leg values (every 30 frames)
+                    if (this._ctrlValueDebugFrameCount % 30 === 0 && this._leftLegCtrlValues.length === 6 && this._rightLegCtrlValues.length === 6) {
+                      console.log('%c=== [控制值详细检查] 左右腿对比 ===', 'color: magenta; font-weight: bold; font-size: 14px;');
+                      console.log('左腿控制值:');
+                      this._leftLegCtrlValues.forEach((v, idx) => {
+                        console.log(`  ${v.jointName} (motorIdx=${v.motorIdx}, ctrlAdr=${v.ctrlAdr}): targetJpos=${v.targetJpos.toFixed(4)}, currentJpos=${v.currentJpos.toFixed(4)}, kp=${v.kp}, torque=${v.torque.toFixed(4)}, ctrlValue=${v.ctrlValue.toFixed(4)}`);
+                      });
+                      console.log('右腿控制值:');
+                      this._rightLegCtrlValues.forEach((v, idx) => {
+                        console.log(`  ${v.jointName} (motorIdx=${v.motorIdx}, ctrlAdr=${v.ctrlAdr}): targetJpos=${v.targetJpos.toFixed(4)}, currentJpos=${v.currentJpos.toFixed(4)}, kp=${v.kp}, torque=${v.torque.toFixed(4)}, ctrlValue=${v.ctrlValue.toFixed(4)}`);
+                      });
+                      
+                      const leftCtrlAvg = this._leftLegCtrlValues.reduce((sum, v) => sum + Math.abs(v.ctrlValue), 0) / this._leftLegCtrlValues.length;
+                      const rightCtrlAvg = this._rightLegCtrlValues.reduce((sum, v) => sum + Math.abs(v.ctrlValue), 0) / this._rightLegCtrlValues.length;
+                      const ctrlRatio = Math.min(leftCtrlAvg, rightCtrlAvg) / Math.max(leftCtrlAvg, rightCtrlAvg);
+                      console.log(`控制值对称性: 左腿平均值=${leftCtrlAvg.toFixed(4)}, 右腿平均值=${rightCtrlAvg.toFixed(4)}, 比例=${ctrlRatio.toFixed(4)} ${ctrlRatio > 0.7 ? '✅' : '❌'}`);
+                      
+                      // Reset for next frame
+                      this._leftLegCtrlValues = [];
+                      this._rightLegCtrlValues = [];
+                      
+                      if (this._ctrlValueDebugFrameCount >= 120) {
+                        this._ctrlValueDebugLogged = true;
+                      }
+                    }
+                  }
+                }
               }
             }
           } else if (this.control_type === 'torque') {

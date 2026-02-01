@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.45: Add detailed observation vector symmetry debugging)"
+name: "Deploy to GitHub Pages (v9.0.46: Add detailed control value debugging for left/right leg)"
 
 on:
   push:
