@@ -237,6 +237,28 @@ export async function reloadPolicy(policy_path, options = {}) {
     }
     console.log('[Joint Mapping] PD gains reordered using joint2motor_idx');
     
+    // CRITICAL FIX: Create motor-ordered address arrays
+    // qpos_adr_policy, qvel_adr_policy, ctrl_adr_policy are in POLICY order
+    // But we need MOTOR-ordered arrays for reading state and applying actions
+    // Python: qj[joint2motor_idx[i]] means: read from motor index joint2motor_idx[i]
+    // So we need: qpos_adr_motor[motorIdx] = qpos_adr_policy[policyIdx] where joint2motor_idx[policyIdx] = motorIdx
+    this.qpos_adr_motor = new Int32Array(this.numActions);
+    this.qvel_adr_motor = new Int32Array(this.numActions);
+    this.ctrl_adr_motor = new Int32Array(this.numActions);
+    
+    // Map from policy order to motor order
+    for (let i = 0; i < this.numActions; i++) {
+      const motorIdx = joint2motorIdx[i];
+      if (motorIdx >= 0 && motorIdx < this.numActions) {
+        this.qpos_adr_motor[motorIdx] = this.qpos_adr_policy[i];
+        this.qvel_adr_motor[motorIdx] = this.qvel_adr_policy[i];
+        this.ctrl_adr_motor[motorIdx] = this.ctrl_adr_policy[i];
+      } else {
+        console.warn(`[Joint Mapping] Invalid motor index ${motorIdx} at policy index ${i}, cannot create motor-ordered arrays`);
+      }
+    }
+    console.log('[Joint Mapping] Motor-ordered address arrays created');
+    
     // Verify that joint2motor_idx values are valid (should be 0-28)
     let allValid = true;
     for (let i = 0; i < this.numActions; i++) {
@@ -253,6 +275,9 @@ export async function reloadPolicy(policy_path, options = {}) {
     this.joint2motorIdx = null;
     this.kpPolicyReorder = null;
     this.kdPolicyReorder = null;
+    this.qpos_adr_motor = null;
+    this.qvel_adr_motor = null;
+    this.ctrl_adr_motor = null;
   }
   
   // Debug: Log joint mapping for loco policy

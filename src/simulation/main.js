@@ -975,11 +975,19 @@ export class MuJoCoDemo {
               
               // Apply actions and PD gains using motor order
               // Python outputs actions and kps/kds in motor order, so we iterate by motor index
+              // CRITICAL FIX: Use motor-ordered address arrays (qpos_adr_motor, qvel_adr_motor, ctrl_adr_motor)
+              // instead of policy-ordered arrays (qpos_adr_policy, qvel_adr_policy, ctrl_adr_policy)
               for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
-                // Get MuJoCo addresses for this motor index
-                const qpos_adr = this.qpos_adr_policy[motorIdx];
-                const qvel_adr = this.qvel_adr_policy[motorIdx];
-                const ctrl_adr = this.ctrl_adr_policy[motorIdx];
+                // Get MuJoCo addresses for this motor index using motor-ordered arrays
+                const qpos_adr = (this.qpos_adr_motor && this.qpos_adr_motor[motorIdx] !== undefined) 
+                  ? this.qpos_adr_motor[motorIdx] 
+                  : this.qpos_adr_policy[motorIdx];
+                const qvel_adr = (this.qvel_adr_motor && this.qvel_adr_motor[motorIdx] !== undefined) 
+                  ? this.qvel_adr_motor[motorIdx] 
+                  : this.qvel_adr_policy[motorIdx];
+                const ctrl_adr = (this.ctrl_adr_motor && this.ctrl_adr_motor[motorIdx] !== undefined) 
+                  ? this.ctrl_adr_motor[motorIdx] 
+                  : this.ctrl_adr_policy[motorIdx];
 
                 // Use reordered action if available, otherwise use original (by motor index)
                 const targetJpos = actionReordered ? actionReordered[motorIdx] : (this.actionTarget ? this.actionTarget[motorIdx] : 0.0);
@@ -1189,16 +1197,18 @@ export class MuJoCoDemo {
     
     // Match Python LocoMode.py: use joint2motor_idx to reorder if available
     // Python: qj_obs[i] = qj[joint2motor_idx[i]]
-    // Key understanding: joint2motor_idx[i] is motor index (0-28), and ctrl_adr_policy[j] where j is motor index
-    // So: qj[joint2motor_idx[i]] in Python = qpos[ctrl_adr_policy[joint2motor_idx[i]]] in JS
-    if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
+    // Key understanding: joint2motor_idx[i] is motor index (0-28)
+    // Python reads from motor index joint2motor_idx[i] into policy index i
+    // So: qj[joint2motor_idx[i]] in Python = qpos[qpos_adr_motor[joint2motor_idx[i]]] in JS
+    if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.qpos_adr_motor) {
       // Read from motor indices (joint2motor_idx) into policy order
+      // Use motor-ordered address arrays (qpos_adr_motor, qvel_adr_motor)
       for (let i = 0; i < this.numActions; i++) {
         const motorIdx = this.joint2motorIdx[i];
-        // motorIdx is the motor index (0-28), which corresponds to ctrl_adr_policy[motorIdx]
+        // motorIdx is the motor index (0-28), use motor-ordered address arrays
         if (motorIdx >= 0 && motorIdx < this.numActions) {
-          const qposAdr = this.qpos_adr_policy[motorIdx];
-          const qvelAdr = this.qvel_adr_policy[motorIdx];
+          const qposAdr = this.qpos_adr_motor[motorIdx];
+          const qvelAdr = this.qvel_adr_motor[motorIdx];
           jointPos[i] = qpos[qposAdr];
           jointVel[i] = qvel[qvelAdr];
         } else {

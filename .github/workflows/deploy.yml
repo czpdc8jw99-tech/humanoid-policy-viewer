@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.42: Fix joint2motor_idx reordering for PD gains, state reading, and action application)"
+name: "Deploy to GitHub Pages (v9.0.43: Fix critical index mismatch - create motor-ordered address arrays)"
 
 on:
   push:
