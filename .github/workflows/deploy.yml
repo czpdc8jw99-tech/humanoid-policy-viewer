@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.39: Fix cmd_scale, joint mapping verification, and initial state)"
+name: "Deploy to GitHub Pages (v9.0.40: Fix scale_values linear mapping and joint2motor_idx reordering)"
 
 on:
   push:

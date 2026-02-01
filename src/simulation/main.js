@@ -13,6 +13,25 @@ function applyDeadzone(x, deadzone = 0.12) {
   return Math.sign(x) * scaled;
 }
 
+// Match Python scale_values function: linear mapping from [-1, 1] to [min, max]
+function scaleValues(values, targetRanges) {
+  const scaled = [];
+  for (let i = 0; i < values.length; i++) {
+    const val = values[i];
+    if (!Number.isFinite(val)) {
+      scaled.push(0.0);
+      continue;
+    }
+    const [newMin, newMax] = targetRanges[i];
+    // Linear mapping: (val + 1) * (newMax - newMin) / 2 + newMin
+    // Examples: -1 -> newMin, 0 -> (newMin+newMax)/2, 1 -> newMax
+    const scaledVal = (val + 1) * (newMax - newMin) / 2 + newMin;
+    scaled.push(scaledVal);
+  }
+  return scaled;
+}
+
+// Keep scaleBipolar for backward compatibility (if needed elsewhere)
 function scaleBipolar(u, min, max) {
   // Map joystick u in [-1, 1] to an asymmetric range, keeping 0 -> 0.
   // For example: min=-0.4, max=0.7
@@ -930,12 +949,41 @@ export class MuJoCoDemo {
                 this._actionApplicationLogged = true;
               }
               
+              // Match Python LocoMode.py: reorder actions using joint2motor_idx if available
+              // Python: action_reorder[motor_idx] = loco_action[i] where motor_idx = joint2motor_idx[i]
+              let actionToApply = this.actionTarget;
+              if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.actionTarget) {
+                // Create reordered action array (policy order -> motor order)
+                const actionReordered = new Float32Array(this.numActions);
+                for (let i = 0; i < this.numActions; i++) {
+                  const motorIdx = this.joint2motorIdx[i];
+                  // Find which policy index corresponds to this motor index
+                  // joint2motor_idx maps policy index -> motor index
+                  // We need to find which ctrl_adr_policy corresponds to this motor index
+                  let policyIdxForMotor = -1;
+                  for (let j = 0; j < this.numActions; j++) {
+                    if (this.ctrl_adr_policy[j] === motorIdx) {
+                      policyIdxForMotor = j;
+                      break;
+                    }
+                  }
+                  if (policyIdxForMotor >= 0 && policyIdxForMotor < this.actionTarget.length) {
+                    actionReordered[motorIdx] = this.actionTarget[policyIdxForMotor];
+                  } else {
+                    // Fallback: use direct mapping
+                    actionReordered[motorIdx] = this.actionTarget[i];
+                  }
+                }
+                actionToApply = actionReordered;
+              }
+              
               for (let i = 0; i < this.numActions; i++) {
                 const qpos_adr = this.qpos_adr_policy[i];
                 const qvel_adr = this.qvel_adr_policy[i];
                 const ctrl_adr = this.ctrl_adr_policy[i];
 
-                const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
+                // Use reordered action if available, otherwise use original
+                const targetJpos = actionToApply ? actionToApply[i] : 0.0;
                 const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
                 const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
                 const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
@@ -1075,15 +1123,16 @@ export class MuJoCoDemo {
     const uVy = axes[0] ?? 0.0; // left/right
     const uWz = axes[2] ?? 0.0; // yaw
 
-    // LocoMode.yaml cmd_range
-    const vx = scaleBipolar(uVx, -0.4, 0.7);
-    const vy = scaleBipolar(uVy, -0.4, 0.4);
-    const wz = scaleBipolar(uWz, -1.57, 1.57);
+    // Match Python LocoMode.py: scale_values(joycmd, [range_velx, range_vely, range_velz])
+    const scaledCmd = scaleValues(
+      [uVx, uVy, uWz],
+      [[-0.4, 0.7], [-0.4, 0.4], [-1.57, 1.57]] // cmd_range from LocoMode.yaml
+    );
 
     // Apply cmd_scale (matching Python LocoMode.py line 85: self.cmd = self.cmd * self.cmd_scale)
-    this.cmd[0] = vx * this.cmdScale[0];
-    this.cmd[1] = vy * this.cmdScale[1];
-    this.cmd[2] = wz * this.cmdScale[2];
+    this.cmd[0] = scaledCmd[0] * this.cmdScale[0];
+    this.cmd[1] = scaledCmd[1] * this.cmdScale[1];
+    this.cmd[2] = scaledCmd[2] * this.cmdScale[2];
 
     this.gamepadState.connected = true;
     this.gamepadState.index = pad.index ?? null;
@@ -1131,11 +1180,42 @@ export class MuJoCoDemo {
     const qvel = this.simulation.qvel;
     const jointPos = new Float32Array(this.numActions);
     const jointVel = new Float32Array(this.numActions);
-    for (let i = 0; i < this.numActions; i++) {
-      const qposAdr = this.qpos_adr_policy[i];
-      const qvelAdr = this.qvel_adr_policy[i];
-      jointPos[i] = qpos[qposAdr];
-      jointVel[i] = qvel[qvelAdr];
+    
+    // Match Python LocoMode.py: use joint2motor_idx to reorder if available
+    // Python: qj_obs[i] = qj[joint2motor_idx[i]]
+    if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
+      // Read from motor indices (joint2motor_idx) into policy order
+      for (let i = 0; i < this.numActions; i++) {
+        const motorIdx = this.joint2motorIdx[i];
+        // Find qpos/qvel address for this motor index
+        // joint2motor_idx maps policy index -> motor index
+        // We need to find which qpos_adr_policy corresponds to this motor index
+        let qposAdr = -1;
+        let qvelAdr = -1;
+        for (let j = 0; j < this.numActions; j++) {
+          if (this.ctrl_adr_policy[j] === motorIdx) {
+            qposAdr = this.qpos_adr_policy[j];
+            qvelAdr = this.qvel_adr_policy[j];
+            break;
+          }
+        }
+        if (qposAdr >= 0 && qvelAdr >= 0) {
+          jointPos[i] = qpos[qposAdr];
+          jointVel[i] = qvel[qvelAdr];
+        } else {
+          // Fallback to direct mapping if not found
+          jointPos[i] = qpos[this.qpos_adr_policy[i]];
+          jointVel[i] = qvel[this.qvel_adr_policy[i]];
+        }
+      }
+    } else {
+      // Use direct name-based mapping (original behavior)
+      for (let i = 0; i < this.numActions; i++) {
+        const qposAdr = this.qpos_adr_policy[i];
+        const qvelAdr = this.qvel_adr_policy[i];
+        jointPos[i] = qpos[qposAdr];
+        jointVel[i] = qvel[qvelAdr];
+      }
     }
     
     // Debug: Log raw qvel values for left/right leg joints (first call only)

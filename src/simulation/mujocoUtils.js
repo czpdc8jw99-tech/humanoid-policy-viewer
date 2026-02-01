@@ -206,14 +206,16 @@ export async function reloadPolicy(policy_path, options = {}) {
     this.cmdScale = new Float32Array(cmdScaleConfig);
   }
   
-  // Verify joint mapping if joint2motor_idx is provided (for loco policy)
+  // Store joint2motor_idx for reordering (matching Python LocoMode.py)
+  // Python code uses joint2motor_idx to:
+  // 1. Read joint state: qj_obs[i] = qj[joint2motor_idx[i]]
+  // 2. Apply actions: action_reorder[motor_idx] = loco_action[i]
   const joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx : null;
   if (joint2motorIdx && joint2motorIdx.length === this.numActions) {
+    this.joint2motorIdx = new Int32Array(joint2motorIdx);
+    console.log('[Joint Mapping] joint2motor_idx loaded for reordering:', Array.from(this.joint2motorIdx));
+    
     // Verify that joint2motor_idx mapping is consistent with name-based mapping
-    // Python code uses joint2motor_idx to reorder actions from policy order to motor order
-    // JS code uses policy_joint_names to map directly to MuJoCo actuators
-    // This verification ensures both approaches are equivalent
-    console.log('[Joint Mapping] joint2motor_idx provided, verifying consistency with name-based mapping...');
     const jointTransmission = this.mujoco.mjtTrn.mjTRN_JOINT.value;
     const actuator2joint = [];
     for (let i = 0; i < this.model.nu; i++) {
@@ -233,10 +235,12 @@ export async function reloadPolicy(policy_path, options = {}) {
       }
     }
     if (mappingConsistent) {
-      console.log('[Joint Mapping] ✅ Name-based mapping is consistent with joint2motor_idx');
+      console.log('[Joint Mapping] ✅ Name-based mapping is consistent with joint2motor_idx - reordering may not be needed');
     } else {
-      console.warn('[Joint Mapping] ⚠️ Name-based mapping differs from joint2motor_idx - this may cause incorrect joint control');
+      console.warn('[Joint Mapping] ⚠️ Name-based mapping differs from joint2motor_idx - will use joint2motor_idx for reordering');
     }
+  } else {
+    this.joint2motorIdx = null;
   }
   
   // Debug: Log joint mapping for loco policy
