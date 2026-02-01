@@ -410,58 +410,22 @@ export async function reloadPolicy(policy_path, options = {}) {
   }
   
   // Set initial joint positions to default_joint_pos if available (for loco policy)
-  // CRITICAL FIX: Use motor order if joint2motorIdx exists, to match state reading and action application
+  // NOTE: default_joint_pos is in POLICY order, and we use qpos_adr_policy to set it
+  // This matches the order used in action calculation: target = defaultJointPos + actionScale * action
   if (this.defaultJposPolicy && this.qpos_adr_policy && this.qpos_adr_policy.length > 0) {
-    if (this.joint2motorIdx && this.qpos_adr_motor && this.qvel_adr_motor) {
-      // Use motor order: reorder default_joint_pos from policy order to motor order
-      // This ensures initial state matches the order used in readPolicyState() and action application
-      const defaultJposMotor = new Float32Array(this.numActions);
-      defaultJposMotor.fill(0.0);
-      
-      // Reorder default_joint_pos from policy order to motor order
-      // default_joint_pos is in policy order, joint2motorIdx[i] maps policy index i to motor index
-      for (let i = 0; i < this.numActions; i++) {
-        const motorIdx = this.joint2motorIdx[i];
-        if (motorIdx >= 0 && motorIdx < this.numActions) {
-          defaultJposMotor[motorIdx] = this.defaultJposPolicy[i];
-        }
+    for (let i = 0; i < this.numActions; i++) {
+      const qposAdr = this.qpos_adr_policy[i];
+      if (qposAdr >= 0 && qposAdr < qpos.length) {
+        qpos[qposAdr] = this.defaultJposPolicy[i];
       }
-      
-      // Set initial positions using motor-ordered address arrays
-      for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
-        const qposAdr = this.qpos_adr_motor[motorIdx];
-        if (qposAdr >= 0 && qposAdr < qpos.length) {
-          qpos[qposAdr] = defaultJposMotor[motorIdx];
-        }
+    }
+    // Reset velocities to zero
+    const qvel = this.simulation.qvel;
+    for (let i = 0; i < this.numActions; i++) {
+      const qvelAdr = this.qvel_adr_policy[i];
+      if (qvelAdr >= 0 && qvelAdr < qvel.length) {
+        qvel[qvelAdr] = 0.0;
       }
-      
-      // Reset velocities to zero using motor-ordered address arrays
-      const qvel = this.simulation.qvel;
-      for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
-        const qvelAdr = this.qvel_adr_motor[motorIdx];
-        if (qvelAdr >= 0 && qvelAdr < qvel.length) {
-          qvel[qvelAdr] = 0.0;
-        }
-      }
-      
-      console.log('[reloadPolicy] Set initial joint positions using motor order (joint2motorIdx exists)');
-    } else {
-      // No joint2motorIdx: use policy order (original behavior for tracking_policy)
-      for (let i = 0; i < this.numActions; i++) {
-        const qposAdr = this.qpos_adr_policy[i];
-        if (qposAdr >= 0 && qposAdr < qpos.length) {
-          qpos[qposAdr] = this.defaultJposPolicy[i];
-        }
-      }
-      // Reset velocities to zero
-      const qvel = this.simulation.qvel;
-      for (let i = 0; i < this.numActions; i++) {
-        const qvelAdr = this.qvel_adr_policy[i];
-        if (qvelAdr >= 0 && qvelAdr < qvel.length) {
-          qvel[qvelAdr] = 0.0;
-        }
-      }
-      console.log('[reloadPolicy] Set initial joint positions using policy order (no joint2motorIdx)');
     }
   }
   
