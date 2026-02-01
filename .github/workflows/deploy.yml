@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.37: Restore original LocoMode design without motion sequences)"
+name: "Deploy to GitHub Pages (v9.0.38: Fix action clip to [-100,100] and restore action_scale to 0.25)"
 
 on:
   push:

@@ -592,16 +592,18 @@ export class PolicyRunner {
         rawActionBeforeClip[i] = action[i];
       }
       
-      const clip = typeof this.actionClip === 'number' ? this.actionClip : Infinity;
+      // CRITICAL: Clip action to [-100, 100] as in original Python code
+      // Original: self.action = self.policy(...).clip(-100, 100).detach().numpy().squeeze()
+      // This matches the original LocoMode.py line 96
       for (let i = 0; i < this.numActions; i++) {
         let value = action[i];
-        // Apply squash (e.g., tanh) if configured
+        // Apply squash (e.g., tanh) if configured (for other policies)
         if (this.actionSquash === 'tanh') {
           value = Math.tanh(value);
         }
-        // Then apply clip
-        const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
-        this.lastActions[i] = clamped;
+        // Clip to [-100, 100] as in original Python code
+        value = Math.max(-100, Math.min(100, value));
+        this.lastActions[i] = value;
       }
       
       // Store raw action for monitoring (before clip, after tanh if applicable)
