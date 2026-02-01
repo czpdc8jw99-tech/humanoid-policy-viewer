@@ -526,11 +526,6 @@ export class PolicyRunner {
         // Command
         console.log('Command (命令):', Array.from(command).map(v => v.toFixed(4)));
         
-        // Left leg indices: 0, 3, 6, 9, 13, 17
-        // Right leg indices: 1, 4, 7, 10, 14, 18
-        const leftLegIndices = [0, 3, 6, 9, 13, 17];
-        const rightLegIndices = [1, 4, 7, 10, 14, 18];
-        
         console.log('[PolicyRunner] Observation vector built:', {
           totalSize: obsForPolicy.length,
           expectedSize: this.numObs,
