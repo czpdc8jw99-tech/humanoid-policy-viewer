@@ -1015,165 +1015,160 @@ export class MuJoCoDemo {
                 }
               }
               
-              // Apply actions and PD gains using motor order
-              // Python outputs actions and kps/kds in motor order, so we iterate by motor index
-              // CRITICAL FIX: Use motor-ordered address arrays (qpos_adr_motor, qvel_adr_motor, ctrl_adr_motor)
-              // instead of policy-ordered arrays (qpos_adr_policy, qvel_adr_policy, ctrl_adr_policy)
-              for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
-                // Get MuJoCo addresses for this motor index using motor-ordered arrays
-                // CRITICAL: qpos_adr_motor, qvel_adr_motor, ctrl_adr_motor are initialized with -1 for unmapped indices
-                let qpos_adr = -1;
-                let qvel_adr = -1;
-                let ctrl_adr = -1;
-                
-                if (this.qpos_adr_motor && this.qpos_adr_motor[motorIdx] >= 0) {
-                  qpos_adr = this.qpos_adr_motor[motorIdx];
-                  qvel_adr = this.qvel_adr_motor[motorIdx];
-                  ctrl_adr = this.ctrl_adr_motor[motorIdx];
-                } else if (this.joint2motorIdx) {
-                  // Fallback: find policy index that maps to this motorIdx
-                  const policyIdx = this.joint2motorIdx.indexOf(motorIdx);
-                  if (policyIdx >= 0 && policyIdx < this.numActions) {
-                    qpos_adr = this.qpos_adr_policy[policyIdx];
-                    qvel_adr = this.qvel_adr_policy[policyIdx];
-                    ctrl_adr = this.ctrl_adr_policy[policyIdx];
-                  } else {
-                    // Last resort: assume direct mapping (policy order = motor order)
-                    qpos_adr = this.qpos_adr_policy[motorIdx] ?? -1;
-                    qvel_adr = this.qvel_adr_policy[motorIdx] ?? -1;
-                    ctrl_adr = this.ctrl_adr_policy[motorIdx] ?? -1;
+              // Apply actions and PD gains
+              // CRITICAL FIX: Use different logic based on whether joint2motorIdx exists
+              // - If joint2motorIdx exists (loco_mode): use motor order (qpos_adr_motor, actionReordered)
+              // - If joint2motorIdx doesn't exist (tracking_policy): use policy order (qpos_adr_policy, actionTarget)
+              if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.qpos_adr_motor) {
+                // Has joint2motorIdx: use motor order (loco_mode)
+                // Python outputs actions and kps/kds in motor order, so we iterate by motor index
+                for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+                  // Get MuJoCo addresses using motor-ordered arrays
+                  const qpos_adr = this.qpos_adr_motor[motorIdx];
+                  const qvel_adr = this.qvel_adr_motor[motorIdx];
+                  const ctrl_adr = this.ctrl_adr_motor[motorIdx];
+                  
+                  // Skip if addresses are invalid
+                  if (qpos_adr < 0 || qvel_adr < 0 || ctrl_adr < 0) {
+                    if (!this._invalidAddressLogged) {
+                      console.warn(`[Action Apply] Invalid addresses for motorIdx ${motorIdx}: qpos=${qpos_adr}, qvel=${qvel_adr}, ctrl=${ctrl_adr}`);
+                      this._invalidAddressLogged = true;
+                    }
+                    continue;
                   }
-                } else {
-                  // No joint2motorIdx: use direct mapping
-                  qpos_adr = this.qpos_adr_policy[motorIdx] ?? -1;
-                  qvel_adr = this.qvel_adr_policy[motorIdx] ?? -1;
-                  ctrl_adr = this.ctrl_adr_policy[motorIdx] ?? -1;
-                }
-                
-                // Skip if addresses are invalid
-                if (qpos_adr < 0 || qvel_adr < 0 || ctrl_adr < 0) {
-                  if (!this._invalidAddressLogged) {
-                    console.warn(`[Action Apply] Invalid addresses for motorIdx ${motorIdx}: qpos=${qpos_adr}, qvel=${qvel_adr}, ctrl=${ctrl_adr}`);
-                    this._invalidAddressLogged = true;
-                  }
-                  continue;
-                }
 
-                // Use reordered action if available
-                // CRITICAL: actionTarget is in POLICY order, but we need MOTOR order
-                // So we MUST use actionReordered when joint2motorIdx exists
-                // If actionReordered doesn't exist, we need to find the policy index that maps to this motorIdx
-                let targetJpos = 0.0;
-                if (actionReordered && !isNaN(actionReordered[motorIdx])) {
-                  targetJpos = actionReordered[motorIdx];
-                } else if (this.joint2motorIdx && this.actionTarget) {
-                  // Fallback: find policy index that maps to this motorIdx
-                  const policyIdx = this.joint2motorIdx.indexOf(motorIdx);
-                  if (policyIdx >= 0 && policyIdx < this.numActions) {
-                    targetJpos = this.actionTarget[policyIdx];
-                  } else {
-                    console.warn(`[Action Apply] No policy index maps to motorIdx ${motorIdx}`);
-                    targetJpos = 0.0;
-                  }
-                } else if (this.actionTarget) {
-                  // Last resort: assume direct mapping (policy order = motor order)
-                  targetJpos = this.actionTarget[motorIdx] ?? 0.0;
-                }
-                
-                // Use reordered PD gains if available (matching Python kps_reorder/kds_reorder)
-                const kp = (this.kpPolicyReorder && this.kpPolicyReorder[motorIdx] !== undefined) 
-                  ? this.kpPolicyReorder[motorIdx] 
-                  : (this.kpPolicy ? this.kpPolicy[motorIdx] : 0.0);
-                const kd = (this.kdPolicyReorder && this.kdPolicyReorder[motorIdx] !== undefined) 
-                  ? this.kdPolicyReorder[motorIdx] 
-                  : (this.kdPolicy ? this.kdPolicy[motorIdx] : 0.0);
-                
-                const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
-                let ctrlValue = torque;
-                const ctrlRange = this.model?.actuator_ctrlrange;
-                if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
-                  const min = ctrlRange[ctrl_adr * 2];
-                  const max = ctrlRange[(ctrl_adr * 2) + 1];
-                  if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
-                    ctrlValue = Math.min(Math.max(ctrlValue, min), max);
-                  }
-                }
-                this.simulation.ctrl[ctrl_adr] = ctrlValue;
-                
-                // CRITICAL DEBUG: Log left/right leg control values (first few frames)
-                if (!this._ctrlValueDebugLogged && this.joint2motorIdx) {
-                  const leftLegPolicyIndices = [0, 3, 6, 9, 13, 17];
-                  const rightLegPolicyIndices = [1, 4, 7, 10, 14, 18];
-                  const leftLegMotorIndices = leftLegPolicyIndices.map(i => this.joint2motorIdx[i]);
-                  const rightLegMotorIndices = rightLegPolicyIndices.map(i => this.joint2motorIdx[i]);
+                  // Use reordered action (motor order)
+                  const targetJpos = (actionReordered && !isNaN(actionReordered[motorIdx])) 
+                    ? actionReordered[motorIdx] 
+                    : 0.0;
                   
-                  // Check if this motorIdx is a left or right leg motor
-                  const leftIdx = leftLegMotorIndices.indexOf(motorIdx);
-                  const rightIdx = rightLegMotorIndices.indexOf(motorIdx);
+                  // Use reordered PD gains (motor order)
+                  const kp = (this.kpPolicyReorder && this.kpPolicyReorder[motorIdx] !== undefined) 
+                    ? this.kpPolicyReorder[motorIdx] 
+                    : 0.0;
+                  const kd = (this.kdPolicyReorder && this.kdPolicyReorder[motorIdx] !== undefined) 
+                    ? this.kdPolicyReorder[motorIdx] 
+                    : 0.0;
+                
+                  const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
+                  let ctrlValue = torque;
+                  const ctrlRange = this.model?.actuator_ctrlrange;
+                  if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
+                    const min = ctrlRange[ctrl_adr * 2];
+                    const max = ctrlRange[(ctrl_adr * 2) + 1];
+                    if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
+                      ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+                    }
+                  }
+                  this.simulation.ctrl[ctrl_adr] = ctrlValue;
                   
-                  if (leftIdx >= 0 || rightIdx >= 0) {
-                    if (!this._ctrlValueDebugFrameCount) {
-                      this._ctrlValueDebugFrameCount = 0;
-                      this._leftLegCtrlValues = [];
-                      this._rightLegCtrlValues = [];
-                    }
-                    this._ctrlValueDebugFrameCount++;
+                  // CRITICAL DEBUG: Log left/right leg control values (first few frames)
+                  if (!this._ctrlValueDebugLogged) {
+                    const leftLegPolicyIndices = [0, 3, 6, 9, 13, 17];
+                    const rightLegPolicyIndices = [1, 4, 7, 10, 14, 18];
+                    const leftLegMotorIndices = leftLegPolicyIndices.map(i => this.joint2motorIdx[i]);
+                    const rightLegMotorIndices = rightLegPolicyIndices.map(i => this.joint2motorIdx[i]);
                     
-                    if (leftIdx >= 0) {
-                      this._leftLegCtrlValues.push({
-                        motorIdx,
-                        policyIdx: leftLegPolicyIndices[leftIdx],
-                        jointName: this.policyJointNames[leftLegPolicyIndices[leftIdx]],
-                        ctrlAdr,
-                        targetJpos,
-                        currentJpos: this.simulation.qpos[qpos_adr],
-                        kp,
-                        kd,
-                        torque,
-                        ctrlValue
-                      });
-                    }
-                    if (rightIdx >= 0) {
-                      this._rightLegCtrlValues.push({
-                        motorIdx,
-                        policyIdx: rightLegPolicyIndices[rightIdx],
-                        jointName: this.policyJointNames[rightLegPolicyIndices[rightIdx]],
-                        ctrlAdr,
-                        targetJpos,
-                        currentJpos: this.simulation.qpos[qpos_adr],
-                        kp,
-                        kd,
-                        torque,
-                        ctrlValue
-                      });
-                    }
+                    // Check if this motorIdx is a left or right leg motor
+                    const leftIdx = leftLegMotorIndices.indexOf(motorIdx);
+                    const rightIdx = rightLegMotorIndices.indexOf(motorIdx);
                     
-                    // Log after collecting all leg values (every 30 frames)
-                    if (this._ctrlValueDebugFrameCount % 30 === 0 && this._leftLegCtrlValues.length === 6 && this._rightLegCtrlValues.length === 6) {
-                      console.log('%c=== [控制值详细检查] 左右腿对比 ===', 'color: magenta; font-weight: bold; font-size: 14px;');
-                      console.log('左腿控制值:');
-                      this._leftLegCtrlValues.forEach((v, idx) => {
-                        console.log(`  ${v.jointName} (motorIdx=${v.motorIdx}, ctrlAdr=${v.ctrlAdr}): targetJpos=${v.targetJpos.toFixed(4)}, currentJpos=${v.currentJpos.toFixed(4)}, kp=${v.kp}, torque=${v.torque.toFixed(4)}, ctrlValue=${v.ctrlValue.toFixed(4)}`);
-                      });
-                      console.log('右腿控制值:');
-                      this._rightLegCtrlValues.forEach((v, idx) => {
-                        console.log(`  ${v.jointName} (motorIdx=${v.motorIdx}, ctrlAdr=${v.ctrlAdr}): targetJpos=${v.targetJpos.toFixed(4)}, currentJpos=${v.currentJpos.toFixed(4)}, kp=${v.kp}, torque=${v.torque.toFixed(4)}, ctrlValue=${v.ctrlValue.toFixed(4)}`);
-                      });
+                    if (leftIdx >= 0 || rightIdx >= 0) {
+                      if (!this._ctrlValueDebugFrameCount) {
+                        this._ctrlValueDebugFrameCount = 0;
+                        this._leftLegCtrlValues = [];
+                        this._rightLegCtrlValues = [];
+                      }
+                      this._ctrlValueDebugFrameCount++;
                       
-                      const leftCtrlAvg = this._leftLegCtrlValues.reduce((sum, v) => sum + Math.abs(v.ctrlValue), 0) / this._leftLegCtrlValues.length;
-                      const rightCtrlAvg = this._rightLegCtrlValues.reduce((sum, v) => sum + Math.abs(v.ctrlValue), 0) / this._rightLegCtrlValues.length;
-                      const ctrlRatio = Math.min(leftCtrlAvg, rightCtrlAvg) / Math.max(leftCtrlAvg, rightCtrlAvg);
-                      console.log(`控制值对称性: 左腿平均值=${leftCtrlAvg.toFixed(4)}, 右腿平均值=${rightCtrlAvg.toFixed(4)}, 比例=${ctrlRatio.toFixed(4)} ${ctrlRatio > 0.7 ? '✅' : '❌'}`);
+                      if (leftIdx >= 0) {
+                        this._leftLegCtrlValues.push({
+                          motorIdx,
+                          policyIdx: leftLegPolicyIndices[leftIdx],
+                          jointName: this.policyJointNames[leftLegPolicyIndices[leftIdx]],
+                          ctrlAdr,
+                          targetJpos,
+                          currentJpos: this.simulation.qpos[qpos_adr],
+                          kp,
+                          kd,
+                          torque,
+                          ctrlValue
+                        });
+                      }
+                      if (rightIdx >= 0) {
+                        this._rightLegCtrlValues.push({
+                          motorIdx,
+                          policyIdx: rightLegPolicyIndices[rightIdx],
+                          jointName: this.policyJointNames[rightLegPolicyIndices[rightIdx]],
+                          ctrlAdr,
+                          targetJpos,
+                          currentJpos: this.simulation.qpos[qpos_adr],
+                          kp,
+                          kd,
+                          torque,
+                          ctrlValue
+                        });
+                      }
                       
-                      // Reset for next frame
-                      this._leftLegCtrlValues = [];
-                      this._rightLegCtrlValues = [];
-                      
-                      if (this._ctrlValueDebugFrameCount >= 120) {
-                        this._ctrlValueDebugLogged = true;
+                      // Log after collecting all leg values (every 30 frames)
+                      if (this._ctrlValueDebugFrameCount % 30 === 0 && this._leftLegCtrlValues.length === 6 && this._rightLegCtrlValues.length === 6) {
+                        console.log('%c=== [控制值详细检查] 左右腿对比 ===', 'color: magenta; font-weight: bold; font-size: 14px;');
+                        console.log('左腿控制值:');
+                        this._leftLegCtrlValues.forEach((v, idx) => {
+                          console.log(`  ${v.jointName} (motorIdx=${v.motorIdx}, ctrlAdr=${v.ctrlAdr}): targetJpos=${v.targetJpos.toFixed(4)}, currentJpos=${v.currentJpos.toFixed(4)}, kp=${v.kp}, torque=${v.torque.toFixed(4)}, ctrlValue=${v.ctrlValue.toFixed(4)}`);
+                        });
+                        console.log('右腿控制值:');
+                        this._rightLegCtrlValues.forEach((v, idx) => {
+                          console.log(`  ${v.jointName} (motorIdx=${v.motorIdx}, ctrlAdr=${v.ctrlAdr}): targetJpos=${v.targetJpos.toFixed(4)}, currentJpos=${v.currentJpos.toFixed(4)}, kp=${v.kp}, torque=${v.torque.toFixed(4)}, ctrlValue=${v.ctrlValue.toFixed(4)}`);
+                        });
+                        
+                        const leftCtrlAvg = this._leftLegCtrlValues.reduce((sum, v) => sum + Math.abs(v.ctrlValue), 0) / this._leftLegCtrlValues.length;
+                        const rightCtrlAvg = this._rightLegCtrlValues.reduce((sum, v) => sum + Math.abs(v.ctrlValue), 0) / this._rightLegCtrlValues.length;
+                        const ctrlRatio = Math.min(leftCtrlAvg, rightCtrlAvg) / Math.max(leftCtrlAvg, rightCtrlAvg);
+                        console.log(`控制值对称性: 左腿平均值=${leftCtrlAvg.toFixed(4)}, 右腿平均值=${rightCtrlAvg.toFixed(4)}, 比例=${ctrlRatio.toFixed(4)} ${ctrlRatio > 0.7 ? '✅' : '❌'}`);
+                        
+                        // Reset for next frame
+                        this._leftLegCtrlValues = [];
+                        this._rightLegCtrlValues = [];
+                        
+                        if (this._ctrlValueDebugFrameCount >= 120) {
+                          this._ctrlValueDebugLogged = true;
+                        }
                       }
                     }
                   }
+                }
+              } else {
+                // No joint2motorIdx: use policy order (tracking_policy)
+                // Original behavior: iterate by policy index, use policy-ordered arrays
+                for (let i = 0; i < this.numActions; i++) {
+                  const qpos_adr = this.qpos_adr_policy[i];
+                  const qvel_adr = this.qvel_adr_policy[i];
+                  const ctrl_adr = this.ctrl_adr_policy[i];
+                  
+                  // Skip if addresses are invalid
+                  if (qpos_adr < 0 || qvel_adr < 0 || ctrl_adr < 0) {
+                    continue;
+                  }
+
+                  // Use actionTarget directly (policy order)
+                  const targetJpos = this.actionTarget ? (this.actionTarget[i] ?? 0.0) : 0.0;
+                  
+                  // Use PD gains directly (policy order)
+                  const kp = this.kpPolicy ? (this.kpPolicy[i] ?? 0.0) : 0.0;
+                  const kd = this.kdPolicy ? (this.kdPolicy[i] ?? 0.0) : 0.0;
+                  
+                  const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
+                  let ctrlValue = torque;
+                  const ctrlRange = this.model?.actuator_ctrlrange;
+                  if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
+                    const min = ctrlRange[ctrl_adr * 2];
+                    const max = ctrlRange[(ctrl_adr * 2) + 1];
+                    if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
+                      ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+                    }
+                  }
+                  this.simulation.ctrl[ctrl_adr] = ctrlValue;
                 }
               }
             }
