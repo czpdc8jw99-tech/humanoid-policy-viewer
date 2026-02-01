@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.44: Fix left/right leg asymmetry - improve action reordering and address mapping)"
+name: "Deploy to GitHub Pages (v9.0.45: Add detailed observation vector symmetry debugging)"
 
 on:
   push:
