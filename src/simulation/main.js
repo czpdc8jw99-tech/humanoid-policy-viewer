@@ -1402,26 +1402,33 @@ export class MuJoCoDemo {
     
     if (hasMotorOrdering && allMotorIndicesMapped) {
       // Match Python LocoMode.py: qj_obs[i] = qj[joint2motor_idx[i]]
-      // Python: qj is motor-ordered array, qj_obs is policy-ordered array
-      // Step 1: Read from MuJoCo into motor-ordered array (qj)
-      const qj_motor = new Float32Array(this.numActions);
-      const dqj_motor = new Float32Array(this.numActions);
-      for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
-        const qposAdr = this.qpos_adr_motor[motorIdx];
-        const qvelAdr = this.qvel_adr_motor[motorIdx];
-        if (qposAdr >= 0 && qvelAdr >= 0) {
-          qj_motor[motorIdx] = qpos[qposAdr];
-          dqj_motor[motorIdx] = qvel[qvelAdr];
-        }
-      }
+      // Python: qj is motor-ordered array (29 elements, index 0-28 is motor index)
+      // Python: qj_obs is policy-ordered array (29 elements, index 0-28 is policy index)
+      // 
+      // CRITICAL: qpos_adr_motor[motorIdx] = qpos_adr_policy[i] where motorIdx = joint2motorIdx[i]
+      // This means qpos_adr_motor[motorIdx] points to the SAME MuJoCo address as qpos_adr_policy[i]
+      // So we can directly read from qpos_adr_policy[i] and reorder using joint2motorIdx
       
-      // Step 2: Reorder from motor order to policy order (qj_obs)
-      // Python: qj_obs[i] = qj[joint2motor_idx[i]]
+      // Direct reordering: read from policy-ordered addresses and reorder using joint2motorIdx
+      // This matches Python: qj_obs[i] = qj[joint2motor_idx[i]]
+      // where qj[joint2motor_idx[i]] is the motor-ordered value at motor index joint2motor_idx[i]
       for (let i = 0; i < this.numActions; i++) {
         const motorIdx = this.joint2motorIdx[i];
         if (motorIdx >= 0 && motorIdx < this.numActions) {
-          jointPos[i] = qj_motor[motorIdx];
-          jointVel[i] = dqj_motor[motorIdx];
+          // Read from the MuJoCo address corresponding to motor index motorIdx
+          // Since qpos_adr_motor[motorIdx] = qpos_adr_policy[i], we can use either
+          // But we need to find which policy index j corresponds to motorIdx
+          // Actually, we can use qpos_adr_motor[motorIdx] directly
+          const qposAdr = this.qpos_adr_motor[motorIdx];
+          const qvelAdr = this.qvel_adr_motor[motorIdx];
+          if (qposAdr >= 0 && qvelAdr >= 0) {
+            jointPos[i] = qpos[qposAdr];
+            jointVel[i] = qvel[qvelAdr];
+          } else {
+            // Fallback to direct mapping
+            jointPos[i] = qpos[this.qpos_adr_policy[i]];
+            jointVel[i] = qvel[this.qvel_adr_policy[i]];
+          }
         } else {
           // Fallback to direct mapping if invalid motor index
           console.warn(`[readPolicyState] Invalid motor index ${motorIdx} at policy index ${i}, using direct mapping`);
