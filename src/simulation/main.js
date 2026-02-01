@@ -949,43 +949,49 @@ export class MuJoCoDemo {
                 this._actionApplicationLogged = true;
               }
               
-              // Match Python LocoMode.py: reorder actions using joint2motor_idx if available
+              // Match Python LocoMode.py: reorder actions and PD gains using joint2motor_idx
               // Python: action_reorder[motor_idx] = loco_action[i] where motor_idx = joint2motor_idx[i]
-              let actionToApply = this.actionTarget;
+              // Python: policy_output.kps = kps_reorder (already reordered in enter())
+              // Key: joint2motor_idx[i] is motor index, ctrl_adr_policy[motorIdx] is the MuJoCo actuator index
+              
+              // Create reordered action array (policy order -> motor order)
+              let actionReordered = null;
               if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.actionTarget) {
-                // Create reordered action array (policy order -> motor order)
-                const actionReordered = new Float32Array(this.numActions);
+                actionReordered = new Float32Array(this.numActions);
                 for (let i = 0; i < this.numActions; i++) {
                   const motorIdx = this.joint2motorIdx[i];
-                  // Find which policy index corresponds to this motor index
-                  // joint2motor_idx maps policy index -> motor index
-                  // We need to find which ctrl_adr_policy corresponds to this motor index
-                  let policyIdxForMotor = -1;
-                  for (let j = 0; j < this.numActions; j++) {
-                    if (this.ctrl_adr_policy[j] === motorIdx) {
-                      policyIdxForMotor = j;
-                      break;
+                  if (motorIdx >= 0 && motorIdx < this.numActions) {
+                    // Python: action_reorder[motor_idx] = loco_action[i]
+                    actionReordered[motorIdx] = this.actionTarget[i];
+                  } else {
+                    console.warn(`[Action Apply] Invalid motor index ${motorIdx} at policy index ${i}`);
+                    // Fallback: use direct mapping
+                    if (motorIdx >= 0 && motorIdx < this.numActions) {
+                      actionReordered[motorIdx] = this.actionTarget[i];
                     }
                   }
-                  if (policyIdxForMotor >= 0 && policyIdxForMotor < this.actionTarget.length) {
-                    actionReordered[motorIdx] = this.actionTarget[policyIdxForMotor];
-                  } else {
-                    // Fallback: use direct mapping
-                    actionReordered[motorIdx] = this.actionTarget[i];
-                  }
                 }
-                actionToApply = actionReordered;
               }
               
-              for (let i = 0; i < this.numActions; i++) {
-                const qpos_adr = this.qpos_adr_policy[i];
-                const qvel_adr = this.qvel_adr_policy[i];
-                const ctrl_adr = this.ctrl_adr_policy[i];
+              // Apply actions and PD gains using motor order
+              // Python outputs actions and kps/kds in motor order, so we iterate by motor index
+              for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+                // Get MuJoCo addresses for this motor index
+                const qpos_adr = this.qpos_adr_policy[motorIdx];
+                const qvel_adr = this.qvel_adr_policy[motorIdx];
+                const ctrl_adr = this.ctrl_adr_policy[motorIdx];
 
-                // Use reordered action if available, otherwise use original
-                const targetJpos = actionToApply ? actionToApply[i] : 0.0;
-                const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
-                const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
+                // Use reordered action if available, otherwise use original (by motor index)
+                const targetJpos = actionReordered ? actionReordered[motorIdx] : (this.actionTarget ? this.actionTarget[motorIdx] : 0.0);
+                
+                // Use reordered PD gains if available (matching Python kps_reorder/kds_reorder)
+                const kp = (this.kpPolicyReorder && this.kpPolicyReorder[motorIdx] !== undefined) 
+                  ? this.kpPolicyReorder[motorIdx] 
+                  : (this.kpPolicy ? this.kpPolicy[motorIdx] : 0.0);
+                const kd = (this.kdPolicyReorder && this.kdPolicyReorder[motorIdx] !== undefined) 
+                  ? this.kdPolicyReorder[motorIdx] 
+                  : (this.kdPolicy ? this.kdPolicy[motorIdx] : 0.0);
+                
                 const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
                 let ctrlValue = torque;
                 const ctrlRange = this.model?.actuator_ctrlrange;
@@ -1183,27 +1189,21 @@ export class MuJoCoDemo {
     
     // Match Python LocoMode.py: use joint2motor_idx to reorder if available
     // Python: qj_obs[i] = qj[joint2motor_idx[i]]
+    // Key understanding: joint2motor_idx[i] is motor index (0-28), and ctrl_adr_policy[j] where j is motor index
+    // So: qj[joint2motor_idx[i]] in Python = qpos[ctrl_adr_policy[joint2motor_idx[i]]] in JS
     if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
       // Read from motor indices (joint2motor_idx) into policy order
       for (let i = 0; i < this.numActions; i++) {
         const motorIdx = this.joint2motorIdx[i];
-        // Find qpos/qvel address for this motor index
-        // joint2motor_idx maps policy index -> motor index
-        // We need to find which qpos_adr_policy corresponds to this motor index
-        let qposAdr = -1;
-        let qvelAdr = -1;
-        for (let j = 0; j < this.numActions; j++) {
-          if (this.ctrl_adr_policy[j] === motorIdx) {
-            qposAdr = this.qpos_adr_policy[j];
-            qvelAdr = this.qvel_adr_policy[j];
-            break;
-          }
-        }
-        if (qposAdr >= 0 && qvelAdr >= 0) {
+        // motorIdx is the motor index (0-28), which corresponds to ctrl_adr_policy[motorIdx]
+        if (motorIdx >= 0 && motorIdx < this.numActions) {
+          const qposAdr = this.qpos_adr_policy[motorIdx];
+          const qvelAdr = this.qvel_adr_policy[motorIdx];
           jointPos[i] = qpos[qposAdr];
           jointVel[i] = qvel[qvelAdr];
         } else {
-          // Fallback to direct mapping if not found
+          // Fallback to direct mapping if invalid motor index
+          console.warn(`[readPolicyState] Invalid motor index ${motorIdx} at policy index ${i}, using direct mapping`);
           jointPos[i] = qpos[this.qpos_adr_policy[i]];
           jointVel[i] = qvel[this.qvel_adr_policy[i]];
         }

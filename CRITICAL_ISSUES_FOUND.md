@@ -1,99 +1,152 @@
-# 关键问题发现
+# 关键问题分析：左右腿不平衡
 
-## 问题 1：Warmup 时观察向量不一致 ❌❌❌
+## 问题现象
+- **左腿太软**：根本立不住
+- **右腿太硬**：即使输入运动指令也完全不动
 
-### 原始 Python 代码
+## 发现的三个关键问题
+
+### 🔴 问题1：PD增益没有重新排序（最严重）
+
+**Python代码**：
 ```python
-self.obs = np.zeros(self.num_obs)  # 全零观察向量
-for _ in range(50):
-    self.policy(torch.from_numpy(self.obs))  # 使用全零观察向量
+# LocoMode.py enter() 方法
+self.kps_reorder[motor_idx] = self.kps[i]  # 重新排序
+self.kds_reorder[motor_idx] = self.kds[i]
+
+# run() 方法输出
+self.policy_output.kps = self.kps_reorder.copy()  # 使用重新排序后的
+self.policy_output.kds = self.kds_reorder.copy()
 ```
 
-### 我们的代码
+**当前JS代码**：
 ```javascript
-const warmupState = {
-  rootQuat: new Float32Array([0, 0, 0, 1]),  // identity quaternion
-  // ...
-};
-
-// ProjectedGravityB.compute(warmupState)
-const quatObj = new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0]);
-// quat = [0, 0, 0, 1] = [w=1, x=0, y=0, z=0]
-// quatObj = THREE.Quaternion(0, 0, 1, 0) = (x=0, y=0, z=1, w=0) ❌ 错误！
-
-const gravityLocal = this.gravity.clone().applyQuaternion(quatObj.clone().invert());
-// gravity = (0, 0, -1)
-// 结果：gravityLocal = (0, 0, -1) 而不是 (0, 0, 0)！
+// main.js line 987-988
+const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;  // ❌ 直接使用，没有重新排序！
+const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
 ```
 
-### 问题分析
-1. **四元数转换错误**：
-   - MuJoCo: `[w, x, y, z]` = `[1, 0, 0, 0]` (identity)
-   - THREE.js: `(x, y, z, w)` = `(0, 0, 0, 1)`
-   - 我们的转换：`new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0])`
-   - 对于 `[1, 0, 0, 0]`：`new THREE.Quaternion(0, 0, 0, 1)` ✅ 正确
+**影响**：
+- PD增益应用到错误的关节！
+- 例如：左腿的kp可能应用到右腿，导致左右腿刚度完全不同
+- **这是导致左右腿不平衡的根本原因！**
 
-2. **但 ProjectedGravityB 不应该在 warmup 时计算**：
-   - 原始 Python 使用全零观察向量
-   - 我们的代码会计算 ProjectedGravityB，得到 `[0, 0, -1]` 而不是 `[0, 0, 0]`
+### 🔴 问题2：动作重新排序逻辑错误
 
-### 影响
-- LSTM 状态初始化不正确
-- 可能导致策略行为异常
+**Python代码**：
+```python
+# LocoMode.py run() 方法
+action_reorder = loco_action.copy()
+for i in range(len(self.joint2motor_idx)):
+    motor_idx = self.joint2motor_idx[i]
+    action_reorder[motor_idx] = loco_action[i]  # 策略索引i -> 电机索引motor_idx
+```
+
+**当前JS代码**：
+```javascript
+// main.js line 955-977
+for (let i = 0; i < this.numActions; i++) {
+  const motorIdx = this.joint2motorIdx[i];
+  // ❌ 错误：试图通过 ctrl_adr_policy 查找
+  for (let j = 0; j < this.numActions; j++) {
+    if (this.ctrl_adr_policy[j] === motorIdx) {  // motorIdx是电机索引，不是actuator索引！
+      // ...
+    }
+  }
+}
+```
+
+**问题**：
+- `joint2motor_idx[i]` 是电机索引（0-28）
+- `ctrl_adr_policy[j]` 是MuJoCo actuator索引（可能不是0-28）
+- **两者不匹配！**
+
+### 🔴 问题3：读取状态的逻辑错误
+
+**当前JS代码**：
+```javascript
+// main.js line 1195-1199
+for (let j = 0; j < this.numActions; j++) {
+  if (this.ctrl_adr_policy[j] === motorIdx) {  // ❌ 同样的错误
+    qposAdr = this.qpos_adr_policy[j];
+    break;
+  }
+}
+```
+
+**问题**：
+- 同样的错误：电机索引和actuator索引不匹配
+- 导致从错误的关节读取状态
 
 ---
 
-## 问题 2：ProjectedGravityB 计算方法不一致 ⚠️
+## 根本原因分析
 
-### 我们的代码（ProjectedGravityB）
-```javascript
-const quatObj = new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0]);
-const gravityLocal = this.gravity.clone().applyQuaternion(quatObj.clone().invert());
-```
+### joint2motor_idx 的真正含义
 
-### 其他代码（TargetProjectedGravityBObs）
-```javascript
-const gLocal = quatApplyInv(quat, g);
-```
+在Python代码中：
+- `self.qj` 是按**电机顺序**的数组（29个电机，索引0-28）
+- `joint2motor_idx[i]` 表示策略索引 `i` 对应的电机索引（0-28）
+- 重新排序后，动作和PD增益都按电机顺序输出
 
-### 问题
-- 两种方法应该等价，但需要验证
-- `quatApplyInv` 是自定义函数，`applyQuaternion` 是 THREE.js 方法
+但在JS代码中：
+- 我们使用名称映射，直接映射到MuJoCo的actuator
+- `ctrl_adr_policy[i]` 是策略索引 `i` 对应的MuJoCo actuator索引
+- **没有"电机顺序"的概念**
 
----
+### 关键理解
 
-## 问题 3：Warmup 时应该使用全零观察向量 ❌
-
-### 修复方案
-在 warmup 时，直接构建全零观察向量，而不是通过 `compute()` 方法：
-
-```javascript
-// 直接构建全零观察向量（匹配原始 Python）
-const obsVec = new Float32Array(this.numObs).fill(0);
-```
+**可能的情况**：
+1. Python代码中的"电机顺序"可能对应JS中的actuator顺序
+2. 但 `joint2motor_idx` 的值（0-28）可能**不是** `ctrl_adr_policy` 的值
+3. 需要验证：`joint2motor_idx[i]` 是否等于某个 `j`，使得 `ctrl_adr_policy[j]` 是我们想要的？
 
 ---
 
-## 验证结果总结
+## 解决方案
 
-### ✅ 正确的部分
-1. 四元数顺序：MuJoCo `[w, x, y, z]` → THREE.js `(x, y, z, w)` 转换正确
-2. 输入观察向量 clip：已正确实现
-3. 动作处理公式：与原始 Python 一致
-4. 输出动作 clip：已正确实现（虽然顺序可能不同，但当前配置下没问题）
+### 方案1：禁用 joint2motor_idx 重新排序（推荐先试这个）
 
-### ❌ 错误的部分
-1. **Warmup 时观察向量不一致**：应该使用全零，但我们计算了 ProjectedGravityB
-2. **ProjectedGravityB 计算方法**：需要验证是否与 `quatApplyInv` 等价
+**假设**：JS代码中的名称映射已经正确，不需要 `joint2motor_idx` 重新排序
 
-### ⚠️ 需要进一步验证
-1. 关节映射方向：需要确认 `policy_joint_names` 顺序
-2. ProjectedGravityB 计算：需要验证 `applyQuaternion` 与 `quatApplyInv` 是否等价
+**步骤**：
+1. 暂时禁用 `joint2motor_idx` 的重新排序逻辑
+2. 直接使用名称映射的结果
+3. 测试是否解决问题
+
+### 方案2：正确实现 joint2motor_idx 重新排序
+
+**需要**：
+1. 理解 `joint2motor_idx` 与 `ctrl_adr_policy` 的关系
+2. 创建正确的重新排序逻辑
+3. 同时重新排序 kp/kd
+
+### 方案3：验证映射关系
+
+**需要检查**：
+1. `joint2motor_idx` 的值是否等于 `ctrl_adr_policy` 的索引？
+2. 或者需要创建反向映射？
 
 ---
 
-## 最优先修复
+## 立即需要修复的优先级
 
-**问题 1：Warmup 时使用全零观察向量**
+### 🔴 最高优先级：PD增益重新排序
+- **影响**：直接导致左右腿不平衡
+- **修复**：需要重新排序 `kpPolicy` 和 `kdPolicy`
 
-这是最严重的问题，可能导致策略行为完全错误。
+### 🟡 高优先级：动作重新排序
+- **影响**：动作应用到错误的关节
+- **修复**：需要正确实现 `joint2motor_idx` 重新排序
+
+### 🟡 高优先级：状态读取
+- **影响**：从错误的关节读取状态
+- **修复**：需要正确实现 `joint2motor_idx` 重新排序
+
+---
+
+## 建议的调试步骤
+
+1. **先禁用 joint2motor_idx 重新排序**，看看是否解决问题
+2. 如果解决了，说明 `joint2motor_idx` 的实现有问题
+3. 如果没解决，检查其他可能的问题（如初始状态、关节顺序等）

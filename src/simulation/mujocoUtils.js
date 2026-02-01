@@ -210,37 +210,49 @@ export async function reloadPolicy(policy_path, options = {}) {
   // Python code uses joint2motor_idx to:
   // 1. Read joint state: qj_obs[i] = qj[joint2motor_idx[i]]
   // 2. Apply actions: action_reorder[motor_idx] = loco_action[i]
+  // 3. Reorder PD gains: kps_reorder[motor_idx] = kps[i]
   const joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx : null;
   if (joint2motorIdx && joint2motorIdx.length === this.numActions) {
     this.joint2motorIdx = new Int32Array(joint2motorIdx);
     console.log('[Joint Mapping] joint2motor_idx loaded for reordering:', Array.from(this.joint2motorIdx));
     
-    // Verify that joint2motor_idx mapping is consistent with name-based mapping
-    const jointTransmission = this.mujoco.mjtTrn.mjTRN_JOINT.value;
-    const actuator2joint = [];
-    for (let i = 0; i < this.model.nu; i++) {
-      if (this.model.actuator_trntype[i] === jointTransmission) {
-        actuator2joint.push(this.model.actuator_trnid[2 * i]);
+    // Reorder PD gains (matching Python LocoMode.py enter() method)
+    // Python: kps_reorder[motor_idx] = kps[i] where motor_idx = joint2motor_idx[i]
+    // Key: joint2motor_idx[i] is the motor index (0-28), and ctrl_adr_policy[j] where j is the motor index
+    this.kpPolicyReorder = new Float32Array(this.numActions);
+    this.kdPolicyReorder = new Float32Array(this.numActions);
+    for (let i = 0; i < this.numActions; i++) {
+      const motorIdx = joint2motorIdx[i];
+      if (motorIdx >= 0 && motorIdx < this.numActions) {
+        this.kpPolicyReorder[motorIdx] = this.kpPolicy[i];
+        this.kdPolicyReorder[motorIdx] = this.kdPolicy[i];
+      } else {
+        console.warn(`[Joint Mapping] Invalid motor index ${motorIdx} at policy index ${i}`);
+        // Fallback: use original value
+        if (motorIdx >= 0 && motorIdx < this.numActions) {
+          this.kpPolicyReorder[motorIdx] = this.kpPolicy[i];
+          this.kdPolicyReorder[motorIdx] = this.kdPolicy[i];
+        }
       }
     }
+    console.log('[Joint Mapping] PD gains reordered using joint2motor_idx');
     
-    // Check if name-based mapping matches joint2motor_idx expectation
-    let mappingConsistent = true;
-    for (let policyIdx = 0; policyIdx < this.numActions; policyIdx++) {
-      const expectedMotorIdx = joint2motorIdx[policyIdx];
-      const actualActuatorIdx = this.ctrl_adr_policy[policyIdx];
-      if (expectedMotorIdx !== actualActuatorIdx) {
-        console.warn(`[Joint Mapping] Mismatch at policy index ${policyIdx}: joint2motor_idx expects motor ${expectedMotorIdx}, but name-based mapping found actuator ${actualActuatorIdx}`);
-        mappingConsistent = false;
+    // Verify that joint2motor_idx values are valid (should be 0-28)
+    let allValid = true;
+    for (let i = 0; i < this.numActions; i++) {
+      const motorIdx = joint2motorIdx[i];
+      if (motorIdx < 0 || motorIdx >= this.numActions) {
+        console.warn(`[Joint Mapping] Invalid motor index ${motorIdx} at policy index ${i}`);
+        allValid = false;
       }
     }
-    if (mappingConsistent) {
-      console.log('[Joint Mapping] ✅ Name-based mapping is consistent with joint2motor_idx - reordering may not be needed');
-    } else {
-      console.warn('[Joint Mapping] ⚠️ Name-based mapping differs from joint2motor_idx - will use joint2motor_idx for reordering');
+    if (allValid) {
+      console.log('[Joint Mapping] ✅ All motor indices are valid (0-28)');
     }
   } else {
     this.joint2motorIdx = null;
+    this.kpPolicyReorder = null;
+    this.kdPolicyReorder = null;
   }
   
   // Debug: Log joint mapping for loco policy

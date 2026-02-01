@@ -1,4 +1,4 @@
-name: "Deploy to GitHub Pages (v9.0.41: Add observation scaling factors and clip support)"
+name: "Deploy to GitHub Pages (v9.0.42: Fix joint2motor_idx reordering for PD gains, state reading, and action application)"
 
 on:
   push:
