@@ -19,12 +19,19 @@ class BootIndicator {
 }
 
 class RootAngVelB {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+    this.scale = typeof kwargs.scale === 'number' ? kwargs.scale : 1.0;
+  }
+
   get size() {
     return 3;
   }
 
   compute(state) {
-    return new Float32Array(state.rootAngVel);
+    const angVel = state.rootAngVel ?? new Float32Array(3);
+    const s = this.scale;
+    return new Float32Array([s * angVel[0], s * angVel[1], s * angVel[2]]);
   }
 }
 

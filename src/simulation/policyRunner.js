@@ -18,6 +18,11 @@ export class PolicyRunner {
     this.defaultJointPos = toFloatArray(options.defaultJointPos ?? [], this.numActions, 0.0);
     this.actionClip = typeof config.action_clip === 'number' ? config.action_clip : 10.0;
     this.actionSquash = config.action_squash ?? null; // "tanh" or null
+    
+    // Load observation scaling factors (matching Python LocoMode.yaml)
+    this.dofPosScale = typeof config.dof_pos_scale === 'number' ? config.dof_pos_scale : 1.0;
+    this.dofVelScale = typeof config.dof_vel_scale === 'number' ? config.dof_vel_scale : 1.0;
+    this.angVelScale = typeof config.ang_vel_scale === 'number' ? config.ang_vel_scale : 1.0;
 
     this.module = new ONNXModule(config.onnx);
     this.inputDict = {};
@@ -321,12 +326,26 @@ export class PolicyRunner {
       }
       const kwargs = { ...obsConfigEntry };
       delete kwargs.name;
+      
+      // Apply scaling factors from config (matching Python LocoMode.py)
+      // Python: self.qj_obs = (self.qj_obs - self.default_angles) * self.dof_pos_scale
+      // Python: self.dqj_obs = self.dqj_obs * self.dof_vel_scale
+      // Python: self.ang_vel = self.ang_vel * self.ang_vel_scale
+      if (obsConfigEntry.name === 'JointPosRel' && !kwargs.scale) {
+        kwargs.scale = this.dofPosScale;
+      } else if (obsConfigEntry.name === 'JointVel' && !kwargs.scale) {
+        kwargs.scale = this.dofVelScale;
+      } else if (obsConfigEntry.name === 'RootAngVelB' && !kwargs.scale) {
+        kwargs.scale = this.angVelScale;
+      }
+      
       return new ObsClass(this, kwargs);
     });
     // Debug: Log built observation modules
     console.log('[PolicyRunner] Built observation modules:', modules.map(m => ({
       name: m.constructor.name,
-      size: m.size
+      size: m.size,
+      scale: m.scale ?? 'N/A'
     })));
     return modules;
   }
