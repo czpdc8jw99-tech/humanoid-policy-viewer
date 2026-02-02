@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: "v9.0.0: Fix joint names in loco policy and add locomotion mode with gamepad control"
 
 on:
   push:
