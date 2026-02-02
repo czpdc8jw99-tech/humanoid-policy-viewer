@@ -185,6 +185,19 @@ export class MuJoCoDemo {
     this.followBodyId = null;
     this.followDistance = this.camera.position.distanceTo(this.controls.target);
 
+    // 手柄控制 (v9.0.0: 新增手柄操控策略)
+    this.gamepadEnabled = false;
+    this.gamepadIndex = null;
+    this.gamepadCommand = [0.0, 0.0, 0.0]; // [vx, vy, vz]
+    this.gamepadCommandScale = [1.0, 1.0, 1.0]; // 命令缩放因子
+    this.gamepadCommandRange = {
+      vx: [-1.0, 1.0], // 线性速度x范围
+      vy: [-1.0, 1.0], // 线性速度y范围
+      vz: [-1.0, 1.0]  // 角速度z范围
+    };
+    this._gamepadPollInterval = null;
+    this._initGamepadSupport();
+
     this.lastSimState = {
       bodies: new Map(),
       lights: new Map(),
@@ -507,6 +520,151 @@ export class MuJoCoDemo {
     this.camera.position.add(this.followDelta);
   }
 
+  /**
+   * 初始化手柄支持 (v9.0.0)
+   */
+  _initGamepadSupport() {
+    // 监听手柄连接/断开事件
+    window.addEventListener('gamepadconnected', (e) => {
+      console.log('手柄已连接:', e.gamepad.id);
+      if (this.gamepadIndex === null) {
+        this.gamepadIndex = e.gamepad.index;
+        this.gamepadEnabled = true;
+      }
+    });
+
+    window.addEventListener('gamepaddisconnected', (e) => {
+      console.log('手柄已断开:', e.gamepad.id);
+      if (e.gamepad.index === this.gamepadIndex) {
+        this.gamepadIndex = null;
+        this.gamepadEnabled = false;
+        this.gamepadCommand = [0.0, 0.0, 0.0];
+        if (this._gamepadPollInterval) {
+          clearInterval(this._gamepadPollInterval);
+          this._gamepadPollInterval = null;
+        }
+      }
+    });
+
+    // 开始轮询手柄状态
+    this._startGamepadPolling();
+  }
+
+  /**
+   * 开始轮询手柄状态 (v9.0.0)
+   */
+  _startGamepadPolling() {
+    if (this._gamepadPollInterval) {
+      return;
+    }
+
+    this._gamepadPollInterval = setInterval(() => {
+      this._updateGamepadCommand();
+    }, 16); // ~60Hz
+  }
+
+  /**
+   * 更新手柄命令 (v9.0.0)
+   * Xbox手柄映射：
+   * - 左摇杆X轴 (axes[0]): 左右移动 -> vy (侧向速度)
+   * - 左摇杆Y轴 (axes[1]): 前后移动 -> vx (前进速度，注意Y轴是反向的)
+   * - 右摇杆X轴 (axes[2]): 左右旋转 -> vz (角速度)
+   */
+  _updateGamepadCommand() {
+    if (!this.gamepadEnabled || this.gamepadIndex === null) {
+      return;
+    }
+
+    const gamepads = navigator.getGamepads();
+    const gamepad = gamepads[this.gamepadIndex];
+    
+    if (!gamepad) {
+      return;
+    }
+
+    // 读取摇杆值（范围通常是-1到1）
+    const leftStickX = gamepad.axes[0] || 0.0;  // 左右移动
+    const leftStickY = gamepad.axes[1] || 0.0;  // 前后移动（注意：通常是反向的）
+    const rightStickX = gamepad.axes[2] || 0.0; // 左右旋转
+
+    // 应用死区（避免摇杆轻微偏移导致机器人移动）
+    const deadZone = 0.1;
+    const applyDeadZone = (value) => {
+      if (Math.abs(value) < deadZone) {
+        return 0.0;
+      }
+      return value;
+    };
+
+    // 映射到命令范围
+    const rawVx = -applyDeadZone(leftStickY); // 前进速度（Y轴反向）
+    const rawVy = applyDeadZone(leftStickX);  // 侧向速度
+    const rawVz = applyDeadZone(rightStickX); // 角速度
+
+    // 缩放到命令范围
+    const rangeVx = this.gamepadCommandRange.vx;
+    const rangeVy = this.gamepadCommandRange.vy;
+    const rangeVz = this.gamepadCommandRange.vz;
+
+    this.gamepadCommand[0] = Math.max(rangeVx[0], Math.min(rangeVx[1], rawVx * this.gamepadCommandScale[0]));
+    this.gamepadCommand[1] = Math.max(rangeVy[0], Math.min(rangeVy[1], rawVy * this.gamepadCommandScale[1]));
+    this.gamepadCommand[2] = Math.max(rangeVz[0], Math.min(rangeVz[1], rawVz * this.gamepadCommandScale[2]));
+
+    // 更新所有policyRunner的命令
+    if (this.policyRunner) {
+      this.policyRunner.command = this.gamepadCommand.slice();
+    }
+    if (this.policyRunners && this.policyRunners.length > 0) {
+      for (const runner of this.policyRunners) {
+        if (runner) {
+          runner.command = this.gamepadCommand.slice();
+        }
+      }
+    }
+  }
+
+  /**
+   * 设置手柄命令范围 (v9.0.0)
+   * @param {Object} ranges - 命令范围 {vx: [min, max], vy: [min, max], vz: [min, max]}
+   */
+  setGamepadCommandRange(ranges) {
+    if (ranges.vx) this.gamepadCommandRange.vx = ranges.vx;
+    if (ranges.vy) this.gamepadCommandRange.vy = ranges.vy;
+    if (ranges.vz) this.gamepadCommandRange.vz = ranges.vz;
+  }
+
+  /**
+   * 设置手柄命令缩放 (v9.0.0)
+   * @param {Array<number>} scale - [scaleVx, scaleVy, scaleVz]
+   */
+  setGamepadCommandScale(scale) {
+    if (Array.isArray(scale) && scale.length >= 3) {
+      this.gamepadCommandScale = scale.slice(0, 3);
+    }
+  }
+
+  /**
+   * 启用/禁用手柄控制 (v9.0.0)
+   * @param {boolean} enabled - 是否启用
+   */
+  setGamepadEnabled(enabled) {
+    this.gamepadEnabled = enabled;
+    if (!enabled) {
+      this.gamepadCommand = [0.0, 0.0, 0.0];
+      // 更新所有policyRunner的命令
+      if (this.policyRunner) {
+        this.policyRunner.command = [0.0, 0.0, 0.0];
+      }
+      if (this.policyRunners && this.policyRunners.length > 0) {
+        for (const runner of this.policyRunners) {
+          if (runner) {
+            runner.command = [0.0, 0.0, 0.0];
+          }
+        }
+      }
+    }
+  }
+
   async main_loop() {
     // v7.1.3: 移除初始模式检测，改为在循环内动态检测
     if (!this.policyRunner && (!this.policyRunners || this.policyRunners.length === 0)) {
@@ -545,6 +703,12 @@ export class MuJoCoDemo {
       }
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
+        // v9.0.0: 更新手柄命令（如果启用），否则保持UI滑块设置的速度命令
+        if (this.gamepadEnabled) {
+          this._updateGamepadCommand();
+        }
+        // 注意：如果手柄未启用，速度命令应该由UI通过updateVelocityCommand()设置
+
         // 状态读取和推理 (v7.0.9: 每个机器人使用独立的policyRunner，添加详细日志)
         let actionTargets = [];
         if (isMultiRobot) {

@@ -22,6 +22,10 @@ export class PolicyRunner {
     this.isInferencing = false;
     this.lastActions = new Float32Array(this.numActions);
 
+    // 命令属性 - 用于loco_mode等需要速度命令的策略
+    // command格式: [vx, vy, vz] (线性速度x, y, 角速度z)
+    this.command = [0.0, 0.0, 0.0];
+
     this.tracking = null;
     if (config.tracking) {
       this.tracking = new TrackingHelper({

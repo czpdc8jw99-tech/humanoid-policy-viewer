@@ -86,6 +86,109 @@ class JointPos {
   }
 }
 
+/**
+ * 相对关节位置观测 - 相对于default_joint_pos的相对位置
+ * 用于loco_mode等策略
+ */
+class JointPosRel {
+  constructor(policy, kwargs = {}) {
+    const { pos_steps = [0] } = kwargs;
+    this.policy = policy;
+    this.posSteps = pos_steps.slice();
+    this.numJoints = policy.numActions;
+    this.defaultJointPos = policy.defaultJointPos ?? new Float32Array(this.numJoints);
+    
+    this.maxStep = Math.max(...this.posSteps);
+    this.history = Array.from({ length: this.maxStep + 1 }, () => new Float32Array(this.numJoints));
+  }
+
+  get size() {
+    return this.posSteps.length * this.numJoints;
+  }
+
+  reset(state) {
+    const source = state?.jointPos ?? new Float32Array(this.numJoints);
+    for (let i = 0; i < this.numJoints; i++) {
+      this.history[0][i] = source[i] - this.defaultJointPos[i];
+    }
+    for (let i = 1; i < this.history.length; i++) {
+      this.history[i].set(this.history[0]);
+    }
+  }
+
+  update(state) {
+    for (let i = this.history.length - 1; i > 0; i--) {
+      this.history[i].set(this.history[i - 1]);
+    }
+    const source = state?.jointPos ?? new Float32Array(this.numJoints);
+    for (let i = 0; i < this.numJoints; i++) {
+      this.history[0][i] = source[i] - this.defaultJointPos[i];
+    }
+  }
+
+  compute() {
+    const out = new Float32Array(this.posSteps.length * this.numJoints);
+    let offset = 0;
+    for (const step of this.posSteps) {
+      const idx = Math.min(step, this.history.length - 1);
+      out.set(this.history[idx], offset);
+      offset += this.numJoints;
+    }
+    return out;
+  }
+}
+
+/**
+ * 关节速度观测 - 用于loco_mode等策略
+ */
+class JointVel {
+  constructor(policy, kwargs = {}) {
+    const { vel_steps = [0] } = kwargs;
+    this.policy = policy;
+    this.velSteps = vel_steps.slice();
+    this.numJoints = policy.numActions;
+    this.velScale = kwargs.vel_scale ?? 1.0;
+    
+    this.maxStep = Math.max(...this.velSteps);
+    this.history = Array.from({ length: this.maxStep + 1 }, () => new Float32Array(this.numJoints));
+  }
+
+  get size() {
+    return this.velSteps.length * this.numJoints;
+  }
+
+  reset(state) {
+    const source = state?.jointVel ?? new Float32Array(this.numJoints);
+    for (let i = 0; i < this.numJoints; i++) {
+      this.history[0][i] = source[i] * this.velScale;
+    }
+    for (let i = 1; i < this.history.length; i++) {
+      this.history[i].set(this.history[0]);
+    }
+  }
+
+  update(state) {
+    for (let i = this.history.length - 1; i > 0; i--) {
+      this.history[i].set(this.history[i - 1]);
+    }
+    const source = state?.jointVel ?? new Float32Array(this.numJoints);
+    for (let i = 0; i < this.numJoints; i++) {
+      this.history[0][i] = source[i] * this.velScale;
+    }
+  }
+
+  compute() {
+    const out = new Float32Array(this.velSteps.length * this.numJoints);
+    let offset = 0;
+    for (const step of this.velSteps) {
+      const idx = Math.min(step, this.history.length - 1);
+      out.set(this.history[idx], offset);
+      offset += this.numJoints;
+    }
+    return out;
+  }
+}
+
 class TrackingCommandObsRaw {
   constructor(policy, kwargs = {}) {
     this.policy = policy;
@@ -266,6 +369,26 @@ class PrevActions {
   }
 }
 
+/**
+ * Command观测类 - 用于loco_mode等需要速度命令的策略
+ * 从policy.command读取速度命令 [vx, vy, vz] (线性速度x, y, 角速度z)
+ */
+class Command {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+  }
+
+  get size() {
+    return 3; // [vx, vy, vz]
+  }
+
+  compute() {
+    // 从policy.command读取命令，如果没有则返回零命令
+    const cmd = this.policy?.command ?? [0.0, 0.0, 0.0];
+    return new Float32Array(cmd);
+  }
+}
+
 
 // Export a dictionary of all observation classes
 export const Observations = {
@@ -274,8 +397,11 @@ export const Observations = {
   RootAngVelB,
   ProjectedGravityB,
   JointPos,
+  JointPosRel,
+  JointVel,
   TrackingCommandObsRaw,
   TargetRootZObs,
   TargetJointPosObs,
-  TargetProjectedGravityBObs
+  TargetProjectedGravityBObs,
+  Command
 };

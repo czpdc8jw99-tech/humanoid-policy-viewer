@@ -86,6 +86,94 @@
         </v-alert>
 
         <v-divider class="my-2"/>
+        
+        <!-- 速度命令控制 (v9.0.0) - Locomotion模式 -->
+        <div v-if="isLocoModePolicy" class="mt-2">
+          <span class="status-name">速度命令控制</span>
+          <div class="mt-2">
+            <!-- 速度输入滑块 -->
+            <div class="mb-2">
+              <div class="text-caption mb-1">前进速度 (Vx): {{ velocityCommand[0].toFixed(2) }} m/s</div>
+              <v-slider
+                v-model="velocityCommand[0]"
+                :min="-0.7"
+                :max="0.7"
+                :step="0.01"
+                density="compact"
+                hide-details
+                @update:model-value="onVelocityChange"
+              ></v-slider>
+            </div>
+            <div class="mb-2">
+              <div class="text-caption mb-1">侧向速度 (Vy): {{ velocityCommand[1].toFixed(2) }} m/s</div>
+              <v-slider
+                v-model="velocityCommand[1]"
+                :min="-0.4"
+                :max="0.4"
+                :step="0.01"
+                density="compact"
+                hide-details
+                @update:model-value="onVelocityChange"
+              ></v-slider>
+            </div>
+            <div class="mb-2">
+              <div class="text-caption mb-1">角速度 (Vz): {{ velocityCommand[2].toFixed(2) }} rad/s</div>
+              <v-slider
+                v-model="velocityCommand[2]"
+                :min="-1.57"
+                :max="1.57"
+                :step="0.01"
+                density="compact"
+                hide-details
+                @update:model-value="onVelocityChange"
+              ></v-slider>
+            </div>
+            <!-- 快速重置按钮 -->
+            <v-btn
+              size="small"
+              variant="outlined"
+              color="primary"
+              density="compact"
+              block
+              @click="resetVelocityCommand"
+            >
+              重置速度
+            </v-btn>
+          </div>
+          
+          <v-divider class="my-2"/>
+          
+          <!-- 手柄控制 (可选) -->
+          <div class="mt-2">
+            <span class="status-name">手柄控制 (可选)</span>
+            <v-switch
+              v-model="gamepadEnabled"
+              label="启用手柄控制"
+              density="compact"
+              hide-details
+              color="primary"
+              @update:modelValue="onGamepadToggle"
+            ></v-switch>
+            <div v-if="gamepadEnabled" class="mt-2">
+              <div class="text-caption text-grey">
+                <div>左摇杆: 前后左右移动</div>
+                <div>右摇杆: 左右旋转</div>
+                <div class="mt-1 text-warning">注意：启用手柄后，滑块控制将被覆盖</div>
+              </div>
+              <v-alert
+                v-if="!gamepadConnected"
+                type="warning"
+                variant="tonal"
+                density="compact"
+                class="mt-2"
+              >
+                未检测到手柄，请连接手柄后刷新页面
+              </v-alert>
+            </div>
+          </div>
+        </div>
+
+        <v-divider class="my-2"/>
         <div class="motion-status" v-if="trackingState">
           <div class="status-legend" v-if="trackingState.available">
             <span class="status-name">Current motion: {{ trackingState.currentName }}</span>
@@ -503,6 +591,13 @@ export default {
         description: 'General tracking policy trained on LaFan1 and AMASS datasets.',
         policyPath: './examples/checkpoints/g1/tracking_policy_amass.json',
         onnxPath: './examples/checkpoints/g1/policy_amass.onnx'
+      },
+      {
+        value: 'g1-loco-mode',
+        title: 'G1 Locomotion Mode (手柄操控)',
+        description: 'Locomotion policy with gamepad control - 支持手柄操控机器人行走',
+        policyPath: './examples/checkpoints/g1/loco_policy_29dof.json',
+        onnxPath: './examples/checkpoints/g1/policy_loco_29dof.onnx'
       }
     ],
     currentPolicy: 'g1-tracking-lafan_amass',
@@ -560,7 +655,13 @@ export default {
     coordinateWarning: {
       show: false,
       message: ''
-    }
+    },
+    // 速度命令控制 (v9.0.0)
+    velocityCommand: [0.0, 0.0, 0.0], // [vx, vy, vz]
+    // 手柄控制 (v9.0.0)
+    gamepadEnabled: false,
+    gamepadConnected: false,
+    gamepadCommand: [0.0, 0.0, 0.0]
   }),
   computed: {
     /**
@@ -683,6 +784,9 @@ export default {
     policyDescription() {
       return this.selectedPolicy?.description ?? '';
     },
+    isLocoModePolicy() {
+      return this.currentPolicy === 'g1-loco-mode';
+    },
     renderScaleLabel() {
       return `${this.renderScale.toFixed(2)}x`;
     },
@@ -707,6 +811,72 @@ export default {
     }
   },
   methods: {
+    // v9.0.0: 初始化手柄支持
+    initGamepadSupport() {
+      window.addEventListener('gamepadconnected', () => {
+        this.gamepadConnected = true;
+        console.log('手柄已连接');
+      });
+      window.addEventListener('gamepaddisconnected', () => {
+        this.gamepadConnected = false;
+        console.log('手柄已断开');
+        if (this.gamepadEnabled) {
+          this.gamepadEnabled = false;
+          this.onGamepadToggle(false);
+        }
+      });
+      // 检查是否已有连接的手柄
+      const gamepads = navigator.getGamepads();
+      this.gamepadConnected = Array.from(gamepads).some(gp => gp !== null);
+    },
+    // v9.0.0: 开始轮询手柄命令显示
+    startGamepadCommandPoll() {
+      this.gamepadCommandPollInterval = setInterval(() => {
+        if (this.demo && this.gamepadEnabled) {
+          this.gamepadCommand = this.demo.gamepadCommand?.slice() || [0.0, 0.0, 0.0];
+        }
+      }, 100); // 10Hz更新显示
+    },
+    // v9.0.0: 速度命令改变
+    onVelocityChange() {
+      if (this.demo && !this.gamepadEnabled) {
+        // 只有在手柄未启用时才更新速度命令
+        this.updateVelocityCommand();
+      }
+    },
+    // v9.0.0: 更新速度命令到policyRunner
+    updateVelocityCommand() {
+      if (!this.demo) return;
+      
+      const cmd = this.velocityCommand.slice();
+      
+      // 更新所有policyRunner的命令
+      if (this.demo.policyRunner) {
+        this.demo.policyRunner.command = cmd;
+      }
+      if (this.demo.policyRunners && this.demo.policyRunners.length > 0) {
+        for (const runner of this.demo.policyRunners) {
+          if (runner) {
+            runner.command = cmd;
+          }
+        }
+      }
+    },
+    // v9.0.0: 重置速度命令
+    resetVelocityCommand() {
+      this.velocityCommand = [0.0, 0.0, 0.0];
+      this.onVelocityChange();
+    },
+    // v9.0.0: 手柄开关切换
+    onGamepadToggle(enabled) {
+      if (this.demo) {
+        this.demo.setGamepadEnabled(enabled);
+        if (!enabled) {
+          // 禁用手柄时，恢复滑块控制
+          this.updateVelocityCommand();
+        }
+      }
+    },
     // v8.1.9: Clicking the currently-selected item should restart the motion
     _getSelectItemValue(item) {
       // Vuetify slot "item" shape can vary (value/raw/props)
@@ -1058,6 +1228,10 @@ export default {
           this.currentPolicy = matchingPolicy.value;
         }
         this.policyLabel = this.demo.currentPolicyPath?.split('/').pop() ?? this.policyLabel;
+        // v9.0.0: 如果是loco模式，初始化速度命令
+        if (this.isLocoModePolicy) {
+          this.resetVelocityCommand();
+        }
         this.state = 1;
       } catch (error) {
         this.state = -1;
@@ -1291,6 +1465,14 @@ export default {
       }
     },
     async onPolicyChange(value) {
+      // v9.0.0: 切换策略时重置速度命令
+      if (this.isLocoModePolicy) {
+        this.resetVelocityCommand();
+      } else {
+        // 切换到非loco模式时，重置速度命令
+        this.velocityCommand = [0.0, 0.0, 0.0];
+      }
+      
       if (!this.demo || !value) {
         return;
       }
@@ -1323,6 +1505,10 @@ export default {
         this.globalPendingMotion = '';
         this.currentMotion = this.demo.params.current_motion ?? this.availableMotions[0] ?? null;
         this.updateTrackingState();
+        // v9.0.0: 策略加载后，如果是loco模式，初始化速度命令
+        if (this.isLocoModePolicy) {
+          this.resetVelocityCommand();
+        }
       } catch (error) {
         console.error('Failed to reload policy:', error);
         this.policyLoadError = error.toString();
@@ -1685,12 +1871,20 @@ export default {
       }
     };
     document.addEventListener('keydown', this.keydown_listener);
+    // v9.0.0: 初始化手柄支持
+    this.initGamepadSupport();
+    // v9.0.0: 开始轮询手柄命令显示
+    this.startGamepadCommandPoll();
   },
   beforeUnmount() {
     this.stopTrackingPoll();
     document.removeEventListener('keydown', this.keydown_listener);
     if (this.resize_listener) {
       window.removeEventListener('resize', this.resize_listener);
+    }
+    // v9.0.0: 清理手柄轮询
+    if (this.gamepadCommandPollInterval) {
+      clearInterval(this.gamepadCommandPollInterval);
     }
   }
 };

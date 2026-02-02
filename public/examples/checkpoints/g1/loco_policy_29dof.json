@@ -1,0 +1,141 @@
+{
+  "onnx": {
+    "meta": {
+      "in_keys": [
+        "policy"
+      ],
+      "out_keys": [
+        "policy",
+        "action"
+      ],
+      "in_shapes": [
+        [
+          [
+            1,
+            96
+          ]
+        ]
+      ]
+    },
+    "path": "./examples/checkpoints/g1/policy_loco_29dof.onnx"
+  },
+  "obs_config": {
+    "policy": [
+      {
+        "name": "RootAngVelB"
+      },
+      {
+        "name": "ProjectedGravityB"
+      },
+      {
+        "name": "Command"
+      },
+      {
+        "name": "JointPosRel",
+        "pos_steps": [0]
+      },
+      {
+        "name": "JointVel",
+        "vel_steps": [0]
+      },
+      {
+        "name": "PrevActions",
+        "history_steps": 1
+      }
+    ]
+  },
+  "policy_joint_names": [
+    "waist_yaw",
+    "left_hip_yaw",
+    "right_hip_yaw",
+    "waist_roll",
+    "left_hip_roll",
+    "right_hip_roll",
+    "waist_pitch",
+    "left_hip_pitch",
+    "right_hip_pitch",
+    "left_knee",
+    "right_knee",
+    "left_ankle_pitch",
+    "right_ankle_pitch",
+    "left_ankle_roll",
+    "right_ankle_roll",
+    "left_shoulder_pitch",
+    "right_shoulder_pitch",
+    "left_shoulder_roll",
+    "right_shoulder_roll",
+    "left_shoulder_yaw",
+    "right_shoulder_yaw",
+    "left_elbow",
+    "right_elbow",
+    "left_wrist_yaw",
+    "right_wrist_yaw",
+    "left_wrist_pitch",
+    "right_wrist_pitch",
+    "left_wrist_roll",
+    "right_wrist_roll"
+  ],
+  "joint2motor_idx": [
+    0, 6, 12,
+    1, 7, 13,
+    2, 8, 14,
+    3, 9, 15, 22,
+    4, 10, 16, 23,
+    5, 11, 17, 24,
+    18, 25,
+    19, 26,
+    20, 27,
+    21, 28
+  ],
+  "default_joint_pos": [
+    -0.2, -0.2, 0.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0,
+    0.42, 0.42, 0.35, 0.35,
+    -0.23, -0.23, 0.18, -0.18,
+    0.0, 0.0, 0.0, 0.0,
+    0.87, 0.87,
+    0.0, 0.0,
+    0.0, 0.0,
+    0.0, 0.0
+  ],
+  "stiffness": [
+    200, 200, 200,
+    150, 150, 200,
+    150, 150, 200,
+    200, 200, 100, 100,
+    20, 20, 100, 100,
+    20, 20, 50, 50,
+    50, 50,
+    40, 40,
+    40, 40,
+    40, 40
+  ],
+  "damping": [
+    5, 5, 5,
+    5, 5, 5,
+    5, 5, 5,
+    5, 5, 2, 2,
+    2, 2, 2, 2,
+    2, 2, 2, 2,
+    2, 2,
+    2, 2,
+    2, 2,
+    2, 2
+  ],
+  "action_scale": [
+    0.25, 0.25, 0.25,
+    0.25, 0.25, 0.25,
+    0.25, 0.25, 0.25,
+    0.25, 0.25, 0.25, 0.25,
+    0.25, 0.25, 0.25, 0.25,
+    0.25, 0.25, 0.25, 0.25,
+    0.25, 0.25,
+    0.25, 0.25,
+    0.25, 0.25,
+    0.25, 0.25
+  ],
+  "action_clip": 10.0,
+  "control_type": "joint_position",
+  "description": "Locomotion policy with gamepad control - 手柄操控行走策略"
+}
