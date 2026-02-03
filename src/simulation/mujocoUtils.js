@@ -203,7 +203,24 @@ export async function reloadPolicy(policy_path, options = {}) {
 
   this.simulation.resetData();
   this.simulation.forward();
-  
+
+  // LocoMode 等策略：用 default_joint_pos 设置站立姿态，避免切换后直接倒下
+  if (this.defaultJposPolicy) {
+    if (isMultiRobot && this.robotJointMappings) {
+      for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
+        const m = this.robotJointMappings[robotIdx];
+        for (let i = 0; i < m.numActions; i++) {
+          this.simulation.qpos[m.qpos_adr_policy[i]] = this.defaultJposPolicy[i];
+        }
+      }
+    } else {
+      for (let i = 0; i < this.numActions; i++) {
+        this.simulation.qpos[this.qpos_adr_policy[i]] = this.defaultJposPolicy[i];
+      }
+    }
+    this.simulation.forward();
+  }
+
   // 检测多机器人模式 (v7.0.4) - 使用之前已声明的isMultiRobot变量
   if (isMultiRobot) {
     // 多机器人模式：为每个机器人创建独立的policyRunner

@@ -1,4 +1,4 @@
-name: "v9.0.1: LocoMode ONNX export, observation order verified, add .venv-export to gitignore"
+name: "v9.0.2: LocoMode stable standing - set qpos to default_joint_pos on load and reset"
 
 on:
   push:

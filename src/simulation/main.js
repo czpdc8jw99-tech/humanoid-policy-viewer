@@ -1081,6 +1081,22 @@ export class MuJoCoDemo {
     if (this.robotConfigs && this.robotConfigs.length > 1) {
       this.setMultiRobotInitialPositions();
     }
+    // LocoMode 等：恢复站立姿态，便于从倒地后重新站起
+    if (this.defaultJposPolicy) {
+      if (this.robotJointMappings && this.robotJointMappings.length > 1) {
+        for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
+          const m = this.robotJointMappings[robotIdx];
+          for (let i = 0; i < m.numActions; i++) {
+            this.simulation.qpos[m.qpos_adr_policy[i]] = this.defaultJposPolicy[i];
+          }
+        }
+      } else {
+        for (let i = 0; i < this.numActions; i++) {
+          this.simulation.qpos[this.qpos_adr_policy[i]] = this.defaultJposPolicy[i];
+        }
+      }
+      this.simulation.forward();
+    }
     this.actionTarget = null;
     
     // 检测多机器人模式并重置所有policyRunner (v7.0.4)
