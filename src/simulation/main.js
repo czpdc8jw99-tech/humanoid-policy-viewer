@@ -1170,8 +1170,6 @@ export class MuJoCoDemo {
     }
     const rootPos = new Float32Array([qpos[0], qpos[1], qpos[2]]);
     const rootQuat = new Float32Array([qpos[3], qpos[4], qpos[5], qpos[6]]);
-    // [调试左倾] 临时打印：验证 MuJoCo qpos 四元数顺序。绕 X 左倾应为 [w,x,y,z] 中 x≈sin(θ/2)，w≈cos(θ/2)，y,z≈0
-    if (typeof console !== 'undefined' && console.log) console.log('[rootQuat]', Array.from(rootQuat).map((v) => v.toFixed(4)));
     const rootAngVel = new Float32Array([qvel[3], qvel[4], qvel[5]]);
     return {
       jointPos,
