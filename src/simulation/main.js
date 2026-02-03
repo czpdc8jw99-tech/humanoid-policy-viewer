@@ -222,9 +222,37 @@ export class MuJoCoDemo {
       this.singleJointDebug = !!enabled;
       const n = (this.policyJointNames?.length ?? 29) - 1;
       this.singleJointIndex = Math.max(0, Math.min(n, parseInt(index, 10) || 0));
-      const name = this.policyJointNames?.[this.singleJointIndex] ?? `index ${this.singleJointIndex}`;
+      const theoreticalName = this.policyJointNames?.[this.singleJointIndex] ?? `index ${this.singleJointIndex}`;
+      
       if (this.singleJointDebug) {
-        console.log(`[单关节排查] 当前仅控制: policy index ${this.singleJointIndex} — ${name}`);
+        // 实际动的关节 = 我们写入的 ctrl[motorIdx] 对应的 actuator 所驱动的 joint（与 main_loop 中应用逻辑完全一致）
+        let actualName = '未知';
+        let motorIdx = -1;
+        if (this.joint2motorIdx && this.joint2motorIdx.length > this.singleJointIndex) {
+          motorIdx = this.joint2motorIdx[this.singleJointIndex];
+          if (motorIdx >= 0 && this.model && this.jointNamesMJC && motorIdx < this.model.nu) {
+            // MuJoCo: actuator m 驱动的 joint 索引 = actuator_trnid[2*m]（与 mujocoUtils 中 actuator2joint 一致）
+            const jointIdx = this.model.actuator_trnid[2 * motorIdx];
+            if (jointIdx >= 0 && jointIdx < this.jointNamesMJC.length) {
+              actualName = this.jointNamesMJC[jointIdx];
+            }
+          }
+        }
+        
+        if (actualName !== '未知') {
+          const match = theoreticalName === actualName || theoreticalName.replace('_joint', '') === actualName.replace('_joint', '');
+          console.log(`[单关节排查] 理论: policy index ${this.singleJointIndex} — ${theoreticalName}`);
+          console.log(`[单关节排查] 实际: ctrl[${motorIdx}]（actuator ${motorIdx}）→ joint "${actualName}" ${match ? '✓' : '✗ 不匹配！'}`);
+          // 交叉验证：按策略关节名查到的 actuator 应与 joint2motor_idx 一致
+          if (this.ctrl_adr_policy && this.ctrl_adr_policy.length > this.singleJointIndex) {
+            const ctrlAdrByName = this.ctrl_adr_policy[this.singleJointIndex];
+            if (ctrlAdrByName !== motorIdx) {
+              console.warn(`[单关节排查] 交叉验证: 按名称查得 ctrl_adr_policy[${this.singleJointIndex}]=${ctrlAdrByName}，与 joint2motor_idx 的 motorIdx=${motorIdx} 不一致`);
+            }
+          }
+        } else {
+          console.log(`[单关节排查] 当前仅控制: policy index ${this.singleJointIndex} — ${theoreticalName} (无法解析实际关节)`);
+        }
       } else {
         console.log('[单关节排查] 已关闭，使用正常策略控制');
       }
@@ -702,26 +730,8 @@ export class MuJoCoDemo {
         ? (this.policyRunners && this.policyRunners.length > 0)
         : this.policyRunner;
       
-      // v7.1.4: 只在第一次检测到模式变化时输出日志（避免刷屏）
-      if (!this._lastMultiRobotMode && isMultiRobot) {
-        console.log(`[DEBUG] Multi-robot mode detected:`, {
-          robotJointMappingsLength: this.robotJointMappings?.length,
-          policyRunnersLength: this.policyRunners?.length,
-          isMultiRobot: true
-        });
-        this._lastMultiRobotMode = true;
-      } else if (this._lastMultiRobotMode === undefined && !isMultiRobot) {
-        // 只在第一次且是单机器人模式时输出（避免初始化时的误报）
-        if (this.robotJointMappings && this.robotJointMappings.length === 0) {
-          // 这是初始化阶段，不输出日志
-        } else {
-          console.log(`[DEBUG] Single-robot mode:`, {
-            robotJointMappingsLength: this.robotJointMappings?.length,
-            hasPolicyRunner: !!this.policyRunner,
-            isMultiRobot: false
-          });
-          this._lastMultiRobotMode = false;
-        }
+      if (this._lastMultiRobotMode === undefined) {
+        this._lastMultiRobotMode = isMultiRobot;
       }
 
       if (!this.params.paused && this.model && this.data && this.simulation && hasPolicyRunner) {
@@ -761,14 +771,6 @@ export class MuJoCoDemo {
               actionTargets[robotIdx] = actionTarget;
               // v7.1.4: 移除频繁的DEBUG日志（避免刷屏）
             }
-            // v7.0.9: 验证actionTargets数组
-            if (actionTargets.length !== this.robotJointMappings.length) {
-              console.warn(`[DEBUG] actionTargets length mismatch:`, {
-                actionTargetsLength: actionTargets.length,
-                mappingsLength: this.robotJointMappings.length,
-                actionTargetsKeys: Object.keys(actionTargets)
-              });
-            }
             // 保持向后兼容：第一个机器人的actionTarget也保存到this.actionTarget
             this.actionTarget = actionTargets[0];
           } catch (e) {
@@ -802,9 +804,6 @@ export class MuJoCoDemo {
               for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
                 const mapping = this.robotJointMappings[robotIdx];
                 if (!mapping) {
-                  if (substep === 0 && robotIdx > 0) {
-                    console.warn(`[DEBUG] Mapping not found for robot ${robotIdx + 1}`);
-                  }
                   continue;
                 }
                 
@@ -883,8 +882,9 @@ export class MuJoCoDemo {
                 // 可选：对右侧 roll 关节（policy 索引 4,16,18）做目标符号翻转，修正左倾
                 const effectiveTarget = new Float32Array(this.numActions);
                 if (this.singleJointDebug && this.defaultJposPolicy) {
-                  // 单关节排查：除 single_joint_index 外全部用 default，只动一个关节（+0.3 rad）便于目视核对顺序
-                  const offset = 0.3;
+                  // 单关节排查：仅一个关节做周期性摆动（±0.55 rad），其余固定 default，便于目视核对
+                  this._singleJointPhase = (this._singleJointPhase ?? 0) + 0.08;
+                  const offset = 0.55 * Math.sin(this._singleJointPhase);
                   for (let i = 0; i < this.numActions; i++) {
                     effectiveTarget[i] = this.defaultJposPolicy[i] + (i === this.singleJointIndex ? offset : 0);
                   }

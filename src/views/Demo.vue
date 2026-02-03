@@ -688,7 +688,7 @@ export default {
     gamepadEnabled: false,
     gamepadConnected: false,
     gamepadCommand: [0.0, 0.0, 0.0],
-    // 单关节排查 (v9.0.10)：仅动一个关节以核对观测/动作顺序
+    // 单关节排查 (v9.0.11)：仅动一个关节以核对观测/动作顺序
     singleJointDebug: false,
     singleJointIndex: 0
   }),

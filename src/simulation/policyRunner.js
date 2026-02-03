@@ -128,28 +128,7 @@ export class PolicyRunner {
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
 
-      // LocoMode诊断：打印前3帧的观测值（观测顺序: angVel 0-2, gravity 3-5, cmd 6-8, jointPos 9-37, jointVel 38-66, prevAction 67-95）
-      if (this.joint2motorIdx && this._stepCount < 3) {
-        const angVel = obsForPolicy.slice(0, 3);
-        const gravity = obsForPolicy.slice(3, 6);
-        const cmd = obsForPolicy.slice(6, 9);
-        const jointPos = obsForPolicy.slice(9, 9 + this.numActions);
-        const jointVel = obsForPolicy.slice(9 + this.numActions, 9 + this.numActions * 2);
-        console.log(`[LocoMode Step ${this._stepCount}] angVel: [${angVel.map(v => v.toFixed(3)).join(', ')}], gravity: [${gravity.map(v => v.toFixed(3)).join(', ')}], cmd: [${cmd.map(v => v.toFixed(3)).join(', ')}]`);
-        // 检查左右对称关节（policy 顺序：左/右交替）
-        const pairs = [
-          ['left_hip_roll_joint', 'right_hip_roll_joint'],
-          ['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
-          ['left_shoulder_roll_joint', 'right_shoulder_roll_joint'],
-          ['left_ankle_roll_joint', 'right_ankle_roll_joint']
-        ];
-        for (const [leftName, rightName] of pairs) {
-          const li = this.policyJointNames.indexOf(leftName);
-          const ri = this.policyJointNames.indexOf(rightName);
-          if (li >= 0 && ri >= 0) {
-            console.log(`  ${leftName.replace('_joint', '')}: pos L=${jointPos[li].toFixed(3)} R=${jointPos[ri].toFixed(3)}, vel L=${jointVel[li].toFixed(3)} R=${jointVel[ri].toFixed(3)}`);
-          }
-        }
+      if (this.joint2motorIdx) {
         this._stepCount++;
       }
 
@@ -166,14 +145,6 @@ export class PolicyRunner {
         const value = action[i];
         const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
         this.lastActions[i] = clamped;
-      }
-
-      // 诊断：打印前几帧的原始动作（L/R roll），用于分析左倾时策略是否在“往右修正”
-      if (this.joint2motorIdx && this._stepCount <= 3) {
-        const hipRollL = this.lastActions[3], hipRollR = this.lastActions[4];
-        const shoulderRollL = this.lastActions[15], shoulderRollR = this.lastActions[16];
-        const ankleRollL = this.lastActions[17], ankleRollR = this.lastActions[18];
-        console.log(`[LocoMode action ${this._stepCount}] hip_roll L=${hipRollL.toFixed(3)} R=${hipRollR.toFixed(3)}, shoulder_roll L=${shoulderRollL.toFixed(3)} R=${shoulderRollR.toFixed(3)}, ankle_roll L=${ankleRollL.toFixed(3)} R=${ankleRollR.toFixed(3)}`);
       }
 
       const target = new Float32Array(this.numActions);
