@@ -48,20 +48,16 @@ class ProjectedGravityB {
   }
 
   compute(state) {
-    // FSMDeploy get_gravity_orientation 公式：将世界重力投影到body frame
-    // 输入quat格式：[w, x, y, z] (MuJoCo格式)
+    // LocoMode 左倾修复测试：用 quatApplyInv 替代显式公式，避免四元数顺序/轴向约定不一致
+    // 世界重力向量 [0, 0, -1]（向下），通过四元数逆变换到 body frame
     const quat = state.rootQuat;
-    const qw = quat[0];
-    const qx = quat[1];
-    const qy = quat[2];
-    const qz = quat[3];
-    
-    // FSMDeploy公式（假设世界重力为[0,0,1]向上，投影到body frame）
-    const gx = 2 * (-qz * qx + qw * qy);
-    const gy = -2 * (qz * qy + qw * qx);
-    const gz = 1 - 2 * (qw * qw + qz * qz);
-    // LocoMode 左倾修复：与训练约定对齐，左倾时 gy>0（取反后策略能正确“往右修正”）
-    return new Float32Array([gx, -gy, gz]);
+    const gravityWorld = [0.0, 0.0, -1.0];
+    const gravityBody = quatApplyInv(
+      [quat[0], quat[1], quat[2], quat[3]],
+      gravityWorld
+    );
+    // 保持对 gy 的取反（之前测试项）
+    return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
   }
 }
 
