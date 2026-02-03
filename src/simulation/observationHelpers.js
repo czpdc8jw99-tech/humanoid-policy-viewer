@@ -32,13 +32,12 @@ class RootAngVelB {
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.25: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
+    // v9.0.26: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
     if (this.isLocoMode) {
       // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
-      // 使用重排序后的四元数，与重力保持一致
-      const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
+      // 使用原始四元数顺序，与重力保持一致
       const omegaBody = quatApplyInv(
-        quatReordered,
+        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
         [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
       );
       return new Float32Array([
@@ -73,17 +72,17 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.23: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.26: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
     if (this.isLocoMode) {
-      // LocoMode 左倾修复：只重排序四元数 [x,y,z,w]，不取反重力
-      // v9.0.23: 测试四元数顺序 - 如果 MuJoCo 存储的是 [x,y,z,w] 而非 [w,x,y,z]
-      const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
+      // LocoMode 左倾修复：使用原始四元数顺序，只取反重力 Y 轴
+      // v9.0.23 重排序导致轴向错位（右倾变前倾），说明四元数顺序可能不是问题
+      // 回到原始顺序，只测试重力 Y 轴符号（文档中的假设）
       const gravityBody = quatApplyInv(
-        quatReordered,
+        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
         gravityWorld
       );
-      // v9.0.23: 只重排序四元数，不取反重力
-      return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
+      // v9.0.26: 原始四元数顺序 + 只取反 Y 轴（测试重力 Y 轴符号假设）
+      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
     } else {
       // 其他策略：标准计算
       const gravityBody = quatApplyInv(
