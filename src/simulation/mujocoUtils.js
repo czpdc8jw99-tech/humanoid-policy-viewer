@@ -381,6 +381,11 @@ export async function reloadPolicy(policy_path, options = {}) {
   }
 
   this.params.current_motion = 'default';
+  
+  // 调试提示：策略加载完成，可以使用 setDisableControl 进行"纯物理"测试
+  if (typeof window !== 'undefined' && window.setDisableControl) {
+    console.log('%c[调试工具] 策略已加载。在控制台输入 setDisableControl(true) 可断开控制（纯物理），用于排查"生成就左倾"问题', 'color: #0f0; font-weight: bold;');
+  }
 }
 
 /**

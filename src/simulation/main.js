@@ -27,6 +27,20 @@ export class MuJoCoDemo {
     this.simulation = null;
     this.currentPolicyPath = defaultPolicy;
 
+    // 调试：断开控制（纯物理）+ 初始化一次性打印（用于“生成就左倾”定位）
+    this.debugDisableControl = false;
+    this._printedInitOnce = false;
+    this.setDisableControl = (enabled) => {
+      this.debugDisableControl = !!enabled;
+      console.log(`[debugDisableControl] ${this.debugDisableControl ? 'ON: ctrl will be zeroed (pure physics)' : 'OFF: normal control'}`);
+    };
+    // 方便在浏览器控制台直接切换：window.setDisableControl(true/false)
+    try {
+      window.setDisableControl = this.setDisableControl;
+    } catch (_) {
+      // ignore (non-browser env)
+    }
+
     this.bodies = {};
     this.lights = {};
 
@@ -797,8 +811,42 @@ export class MuJoCoDemo {
           }
         }
 
+        // 仅打印一次：仿真创建后的初始状态（用于判断是否“生成就歪/关节初始就不对称”）
+        if (!this._printedInitOnce && this.simulation?.qpos) {
+          this._printedInitOnce = true;
+          const qpos0 = Array.from(this.simulation.qpos.slice(0, 7)).map((v) => Number(v).toFixed(6));
+          console.log('[init qpos[0..6]] [x,y,z,q0,q1,q2,q3]=', qpos0);
+          try {
+            const s = this.readPolicyState?.();
+            if (s?.jointPos && this.policyJointNames && this.policyJointNames.length === s.jointPos.length) {
+              const pick = (name) => {
+                const idx = this.policyJointNames.indexOf(name);
+                return idx >= 0 ? { idx, val: Number(s.jointPos[idx]).toFixed(6) } : null;
+              };
+              const lHip = pick('left_hip_roll') ?? pick('l_hip_roll');
+              const rHip = pick('right_hip_roll') ?? pick('r_hip_roll');
+              const lAnk = pick('left_ankle_roll') ?? pick('l_ankle_roll');
+              const rAnk = pick('right_ankle_roll') ?? pick('r_ankle_roll');
+              console.log('[init roll joints]', { lHip, rHip, lAnk, rAnk });
+            } else if (s?.jointPos) {
+              // 回退：按历史排查索引（可能不适用于所有模型）
+              const safe = (i) => (i >= 0 && i < s.jointPos.length ? Number(s.jointPos[i]).toFixed(6) : null);
+              console.log('[init jointPos fallback idx]', {
+                idx4: safe(4),
+                idx18: safe(18)
+              });
+            }
+          } catch (e) {
+            console.warn('[init debug] failed to read policy state:', e);
+          }
+        }
+
         for (let substep = 0; substep < this.decimation; substep++) {
           if (this.control_type === 'joint_position') {
+            // 调试：断开控制（纯物理），每个 substep 将 ctrl 清零并跳过PD写入
+            if (this.debugDisableControl && this.simulation?.ctrl) {
+              this.simulation.ctrl.fill(0.0);
+            } else {
             if (isMultiRobot) {
               // 多机器人模式：应用到所有机器人 (v7.0.9: 添加详细调试日志)
               for (let robotIdx = 0; robotIdx < this.robotJointMappings.length; robotIdx++) {
@@ -978,6 +1026,7 @@ export class MuJoCoDemo {
                 }
               }
             }
+            }
           } else if (this.control_type === 'torque') {
             console.error('Torque control not implemented yet.');
           }
@@ -1121,6 +1170,8 @@ export class MuJoCoDemo {
     }
     const rootPos = new Float32Array([qpos[0], qpos[1], qpos[2]]);
     const rootQuat = new Float32Array([qpos[3], qpos[4], qpos[5], qpos[6]]);
+    // [调试左倾] 临时打印：验证 MuJoCo qpos 四元数顺序。绕 X 左倾应为 [w,x,y,z] 中 x≈sin(θ/2)，w≈cos(θ/2)，y,z≈0
+    if (typeof console !== 'undefined' && console.log) console.log('[rootQuat]', Array.from(rootQuat).map((v) => v.toFixed(4)));
     const rootAngVel = new Float32Array([qvel[3], qvel[4], qvel[5]]);
     return {
       jointPos,
