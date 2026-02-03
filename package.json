@@ -2,7 +2,7 @@
   "name": "gentle_humanoid_web",
   "private": true,
   "type": "module",
-  "version": "9.0.33",
+  "version": "9.0.34",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",

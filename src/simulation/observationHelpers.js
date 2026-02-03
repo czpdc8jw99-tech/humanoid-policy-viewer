@@ -32,24 +32,17 @@ class RootAngVelB {
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.33: 只对 LocoMode 应用特殊处理，其他策略直接使用原始值
-    if (this.isLocoMode) {
-      // LocoMode 左倾修复：尝试不转换角速度（直接使用世界系），看训练是否用的世界系
-      // v9.0.32 各种取反组合都无效，尝试不转换角速度
-      // 直接使用世界系角速度，不取反
-      return new Float32Array([
-        omegaWorld[0] * this.scale,
-        omegaWorld[1] * this.scale,
-        omegaWorld[2] * this.scale
-      ]);
-    } else {
-      // 其他策略：直接使用原始角速度（可能是世界系，但训练时也是世界系）
-      return new Float32Array([
-        omegaWorld[0] * this.scale,
-        omegaWorld[1] * this.scale,
-        omegaWorld[2] * this.scale
-      ]);
-    }
+    // v9.0.34: 恢复标准计算 - 对所有策略都做世界系→机体系转换
+    // v9.0.33 及之前各种修改都无效，恢复标准计算，检查问题是否在观测值符号
+    const omegaBody = quatApplyInv(
+      [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+      [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
+    );
+    return new Float32Array([
+      omegaBody[0] * this.scale,
+      omegaBody[1] * this.scale,
+      omegaBody[2] * this.scale
+    ]);
   }
 }
 
@@ -69,24 +62,13 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.33: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
-    if (this.isLocoMode) {
-      // LocoMode 左倾修复：使用原始四元数顺序，只取反重力 Y 轴
-      // v9.0.32 各种组合都无效，回到基础假设：只取反重力 Y 轴，角速度不转换
-      const gravityBody = quatApplyInv(
-        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
-        gravityWorld
-      );
-      // v9.0.33: 原始四元数顺序 + 只取反 Y 轴，角速度不转换（测试训练是否用世界系角速度）
-      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
-    } else {
-      // 其他策略：标准计算
-      const gravityBody = quatApplyInv(
-        [quat[0], quat[1], quat[2], quat[3]],
-        gravityWorld
-      );
-      return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
-    }
+    // v9.0.34: 恢复标准计算 - 对所有策略都使用标准重力计算
+    // v9.0.33 及之前各种修改都无效，恢复标准计算，检查问题是否在观测值符号
+    const gravityBody = quatApplyInv(
+      [quat[0], quat[1], quat[2], quat[3]],
+      gravityWorld
+    );
+    return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
   }
 }
 
