@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v9.0.17</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v9.0.18</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -688,7 +688,7 @@ export default {
     gamepadEnabled: false,
     gamepadConnected: false,
     gamepadCommand: [0.0, 0.0, 0.0],
-    // 单关节排查 (v9.0.17)：仅动一个关节以核对观测/动作顺序
+    // 单关节排查 (v9.0.18)：仅动一个关节以核对观测/动作顺序
     singleJointDebug: false,
     singleJointIndex: 0
   }),

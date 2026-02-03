@@ -56,8 +56,8 @@ class ProjectedGravityB {
       [quat[0], quat[1], quat[2], quat[3]],
       gravityWorld
     );
-    // 去掉 gy 取反：quatApplyInv 可能已给出正确符号，不再额外取反
-    return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
+    // 测试：整段重力向量取反（所有分量），看是否训练时重力方向约定相反
+    return new Float32Array([-gravityBody[0], -gravityBody[1], -gravityBody[2]]);
   }
 }
 
