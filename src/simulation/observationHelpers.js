@@ -27,8 +27,18 @@ class RootAngVelB {
     return 3;
   }
   compute(state) {
-    const v = state.rootAngVel;
-    return new Float32Array([v[0] * this.scale, v[1] * this.scale, v[2] * this.scale]);
+    // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
+    const omegaWorld = state.rootAngVel;
+    const quat = state.rootQuat;
+    const omegaBody = quatApplyInv(
+      [quat[0], quat[1], quat[2], quat[3]],
+      [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
+    );
+    return new Float32Array([
+      omegaBody[0] * this.scale,
+      omegaBody[1] * this.scale,
+      omegaBody[2] * this.scale
+    ]);
   }
 }
 
