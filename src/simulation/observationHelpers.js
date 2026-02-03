@@ -32,11 +32,13 @@ class RootAngVelB {
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.24: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
+    // v9.0.25: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
     if (this.isLocoMode) {
       // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
+      // 使用重排序后的四元数，与重力保持一致
+      const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
       const omegaBody = quatApplyInv(
-        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+        quatReordered,
         [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
       );
       return new Float32Array([
@@ -71,14 +73,16 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.24: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.25: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
     if (this.isLocoMode) {
-      // LocoMode 左倾修复：尝试原始四元数顺序 + 只取反 Y 轴（之前试过但可能当时四元数顺序错了）
+      // LocoMode 左倾修复：四元数重排序 [x,y,z,w] + 只取反 Y 轴
+      // v9.0.22-23 显示重排序后变右倾，说明方向对但需要配合 Y 轴取反
+      const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
       const gravityBody = quatApplyInv(
-        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+        quatReordered,
         gravityWorld
       );
-      // v9.0.24: 使用原始四元数顺序，只取反 Y 轴（测试是否是四元数顺序+重力Y轴的双重问题）
+      // v9.0.25: 重排序四元数 + 只取反 Y 轴（测试组合效果）
       return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
     } else {
       // 其他策略：标准计算
