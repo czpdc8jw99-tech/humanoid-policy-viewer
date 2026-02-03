@@ -72,16 +72,17 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.27: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.28: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
     if (this.isLocoMode) {
-      // LocoMode 左倾修复：使用原始四元数顺序，整个重力向量取反
-      // v9.0.26 只取反 Y 轴还是左倾，尝试整个向量取反
+      // LocoMode 左倾修复：使用原始四元数顺序，只取反重力 X 轴（前后方向）
+      // v9.0.27 整个向量取反导致往后倒，说明 Z 轴不应该取反
+      // 尝试只取反 X 轴（前后方向），保留 Y 和 Z 不变
       const gravityBody = quatApplyInv(
         [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
         gravityWorld
       );
-      // v9.0.27: 原始四元数顺序 + 整个重力向量取反（测试训练是否用相反的重力方向）
-      return new Float32Array([-gravityBody[0], -gravityBody[1], -gravityBody[2]]);
+      // v9.0.28: 原始四元数顺序 + 只取反 X 轴（测试前后方向约定）
+      return new Float32Array([-gravityBody[0], gravityBody[1], gravityBody[2]]);
     } else {
       // 其他策略：标准计算
       const gravityBody = quatApplyInv(
