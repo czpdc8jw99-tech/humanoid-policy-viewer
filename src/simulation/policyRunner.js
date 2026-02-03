@@ -116,14 +116,28 @@ export class PolicyRunner {
 
       const obsForPolicy = new Float32Array(this.numObs);
       let offset = 0;
+      let prevActionsOffset = -1;
+      let prevActionsSize = 0;
       for (const obs of this.obsModules) {
         if (typeof obs.update === 'function') {
           obs.update(state);
         }
         const obsValue = obs.compute(state);
         const obsArray = ArrayBuffer.isView(obsValue) ? obsValue : Float32Array.from(obsValue);
+        // 记录 PrevActions 的位置（用于第一步置零测试）
+        if (obs.constructor.name === 'PrevActions') {
+          prevActionsOffset = offset;
+          prevActionsSize = obsArray.length;
+        }
         obsForPolicy.set(obsArray, offset);
         offset += obsArray.length;
+      }
+
+      // LocoMode 左倾修复测试：第一步 PrevActions 置零（不用 warm-up 输出），避免初始偏差放大
+      if (this.joint2motorIdx && this._stepCount === 0 && prevActionsOffset >= 0) {
+        for (let i = 0; i < prevActionsSize; i++) {
+          obsForPolicy[prevActionsOffset + i] = 0.0;
+        }
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
