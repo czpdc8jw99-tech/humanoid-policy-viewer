@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v9.0.32</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v9.0.33</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
