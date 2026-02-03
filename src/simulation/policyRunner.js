@@ -79,6 +79,19 @@ export class PolicyRunner {
         const lAnk = pickRoll('left_ankle_roll_joint') ?? pickRoll('left_ankle_roll');
         const rAnk = pickRoll('right_ankle_roll_joint') ?? pickRoll('right_ankle_roll');
         console.log('[warm-up lastActions (roll joints)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
+        
+        // v9.0.19: 检查 warm-up 输出的对称性
+        const checkWarmupSymmetry = (left, right, name) => {
+          if (left && right) {
+            const lv = Number(left.val);
+            const rv = Number(right.val);
+            const symmetric = Math.abs(lv + rv) < 0.1; // 允许 0.1 的误差
+            console.log(`[warm-up symmetry ${name}] left=${lv.toFixed(4)} right=${rv.toFixed(4)} ${symmetric ? '✓ 对称' : '✗ 不对称'}`);
+          }
+        };
+        checkWarmupSymmetry(lHip, rHip, 'hip_roll');
+        checkWarmupSymmetry(lShld, rShld, 'shoulder_roll');
+        checkWarmupSymmetry(lAnk, rAnk, 'ankle_roll');
       } else {
         console.log('LocoMode: Policy warmed up with 50 zero-observation runs');
       }
@@ -159,11 +172,20 @@ export class PolicyRunner {
         const rootAngVelB = Array.from(obsForPolicy.slice(0, 3)).map(v => Number(v).toFixed(4));
         const gravityB = Array.from(obsForPolicy.slice(3, 6)).map(v => Number(v).toFixed(4));
         const command = Array.from(obsForPolicy.slice(6, 9)).map(v => Number(v).toFixed(4));
+        const jointPosRel = Array.from(obsForPolicy.slice(9, 9 + this.numActions)).map(v => Number(v).toFixed(4));
+        const jointVel = Array.from(obsForPolicy.slice(9 + this.numActions, 9 + 2 * this.numActions)).map(v => Number(v).toFixed(4));
         console.log('[step 1 observations]', {
           rootAngVelB,
           gravityB,
           command,
-          prevActions: prevActionsOffset >= 0 ? Array.from(obsForPolicy.slice(prevActionsOffset, prevActionsOffset + prevActionsSize)).map(v => Number(v).toFixed(4)) : null
+          jointPosRel: jointPosRel.slice(0, 10), // 只打印前10个，避免太长
+          jointVel: jointVel.slice(0, 10),
+          prevActions: prevActionsOffset >= 0 ? Array.from(obsForPolicy.slice(prevActionsOffset, prevActionsOffset + prevActionsSize)).map(v => Number(v).toFixed(4)) : null,
+          // 打印原始状态（用于对比）
+          rawState: {
+            rootQuat: state.rootQuat ? Array.from(state.rootQuat).map(v => Number(v).toFixed(4)) : null,
+            rootAngVel: state.rootAngVel ? Array.from(state.rootAngVel).map(v => Number(v).toFixed(4)) : null
+          }
         });
       }
 
@@ -201,6 +223,19 @@ export class PolicyRunner {
         const lAnk = pickRoll('left_ankle_roll_joint') ?? pickRoll('left_ankle_roll');
         const rAnk = pickRoll('right_ankle_roll_joint') ?? pickRoll('right_ankle_roll');
         console.log('[step 1 action output (roll joints)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
+        
+        // v9.0.19: 检查第一帧 action 输出的对称性
+        const checkActionSymmetry = (left, right, name) => {
+          if (left && right) {
+            const lv = Number(left.action);
+            const rv = Number(right.action);
+            const symmetric = Math.abs(lv + rv) < 0.1; // 允许 0.1 的误差
+            console.log(`[step 1 action symmetry ${name}] left=${lv.toFixed(4)} right=${rv.toFixed(4)} ${symmetric ? '✓ 对称' : '✗ 不对称'}`);
+          }
+        };
+        checkActionSymmetry(lHip, rHip, 'hip_roll');
+        checkActionSymmetry(lShld, rShld, 'shoulder_roll');
+        checkActionSymmetry(lAnk, rAnk, 'ankle_roll');
       }
 
       const target = new Float32Array(this.numActions);
