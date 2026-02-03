@@ -1,4 +1,4 @@
-name: "v9.0.2: LocoMode stable standing - set qpos to default_joint_pos on load and reset"
+name: "v9.0.3: Fix LocoMode tiptoe - set ankle pitch default to 0.0"
 
 on:
   push:
