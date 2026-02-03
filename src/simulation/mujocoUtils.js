@@ -199,6 +199,31 @@ export async function reloadPolicy(policy_path, options = {}) {
   
   // LocoMode: joint2motor_idx 用于重排序动作到电机顺序
   this.joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx.slice() : null;
+  
+  // LocoMode: 诊断 - 检查 ctrl_adr_policy 是否与 joint2motor_idx 一致
+  if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.ctrl_adr_policy.length === this.numActions) {
+    let mismatchCount = 0;
+    const mismatches = [];
+    for (let i = 0; i < this.numActions; i++) {
+      if (this.ctrl_adr_policy[i] !== this.joint2motorIdx[i]) {
+        mismatchCount++;
+        if (mismatches.length < 10) {
+          mismatches.push({
+            policyIdx: i,
+            jointName: policyJointNames[i],
+            ctrl_adr: this.ctrl_adr_policy[i],
+            joint2motor: this.joint2motorIdx[i]
+          });
+        }
+      }
+    }
+    if (mismatchCount > 0) {
+      console.warn(`LocoMode: ctrl_adr_policy != joint2motor_idx for ${mismatchCount} joints. First mismatches:`, mismatches);
+      console.warn('This may cause incorrect action mapping. Actions will be reordered using joint2motor_idx.');
+    } else {
+      console.log('LocoMode: ctrl_adr_policy matches joint2motor_idx ✓');
+    }
+  }
 
   if (trackingConfig) {
     trackingConfig.policy_joint_names = policyJointNames.slice();

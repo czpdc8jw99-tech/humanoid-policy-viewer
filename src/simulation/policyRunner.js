@@ -24,6 +24,7 @@ export class PolicyRunner {
     this.inputDict = {};
     this.isInferencing = false;
     this.lastActions = new Float32Array(this.numActions);
+    this._stepCount = 0; // 用于诊断
 
     // 命令属性 - 用于loco_mode等需要速度命令的策略
     // command格式: [vx, vy, vz] (线性速度x, y, 角速度z)
@@ -79,6 +80,7 @@ export class PolicyRunner {
   reset(state = null) {
     this.inputDict = this.module.initInput() ?? {};
     this.lastActions.fill(0.0);
+    this._stepCount = 0; // 重置步数计数
     if (this.tracking) {
       this.tracking.reset(state);
     }
@@ -117,6 +119,22 @@ export class PolicyRunner {
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
+
+      // LocoMode诊断：打印前3帧的观测值（检查左右对称性）
+      if (this.joint2motorIdx && this._stepCount < 3) {
+        const angVel = obsForPolicy.slice(0, 3);
+        const gravity = obsForPolicy.slice(3, 6);
+        const cmd = obsForPolicy.slice(6, 9);
+        const jointPos = obsForPolicy.slice(9, 9 + this.numActions);
+        console.log(`[LocoMode Step ${this._stepCount}] angVel: [${angVel.map(v => v.toFixed(3)).join(', ')}], gravity: [${gravity.map(v => v.toFixed(3)).join(', ')}], cmd: [${cmd.map(v => v.toFixed(3)).join(', ')}]`);
+        // 检查左右对称关节（left_shoulder vs right_shoulder）
+        const leftShoulderIdx = this.policyJointNames.indexOf('left_shoulder_pitch_joint');
+        const rightShoulderIdx = this.policyJointNames.indexOf('right_shoulder_pitch_joint');
+        if (leftShoulderIdx >= 0 && rightShoulderIdx >= 0) {
+          console.log(`  Shoulder pitch: left=${jointPos[leftShoulderIdx].toFixed(3)}, right=${jointPos[rightShoulderIdx].toFixed(3)}`);
+        }
+        this._stepCount++;
+      }
 
       const [result, carry] = await this.module.runInference(this.inputDict);
       this.inputDict = { ...this.inputDict, ...carry };

@@ -29,19 +29,25 @@ class RootAngVelB {
 }
 
 class ProjectedGravityB {
-  constructor() {
-    this.gravity = new THREE.Vector3(0, 0, -1);
-  }
-
   get size() {
     return 3;
   }
 
   compute(state) {
+    // FSMDeploy get_gravity_orientation 公式：将世界重力投影到body frame
+    // 输入quat格式：[w, x, y, z] (MuJoCo格式)
     const quat = state.rootQuat;
-    const quatObj = new THREE.Quaternion(quat[1], quat[2], quat[3], quat[0]);
-    const gravityLocal = this.gravity.clone().applyQuaternion(quatObj.clone().invert());
-    return new Float32Array([gravityLocal.x, gravityLocal.y, gravityLocal.z]);
+    const qw = quat[0];
+    const qx = quat[1];
+    const qy = quat[2];
+    const qz = quat[3];
+    
+    // FSMDeploy公式（假设世界重力为[0,0,1]向上，投影到body frame）
+    const gx = 2 * (-qz * qx + qw * qy);
+    const gy = -2 * (qz * qy + qw * qx);
+    const gz = 1 - 2 * (qw * qw + qz * qz);
+    
+    return new Float32Array([gx, gy, gz]);
   }
 }
 

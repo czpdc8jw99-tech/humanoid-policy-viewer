@@ -850,40 +850,86 @@ export class MuJoCoDemo {
               }
             } else {
               // 单机器人模式（原有逻辑）
-              // LocoMode: 如果有joint2motor_idx，验证并应用动作
-              if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
-                // 验证：ctrl_adr_policy应该等于joint2motor_idx（策略关节i对应的电机索引）
-                let mismatch = false;
+              // LocoMode: 如果有joint2motor_idx，按电机顺序应用动作（与FSMDeploy一致）
+              if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.actionTarget) {
+                // FSMDeploy: action_reorder[motor_idx] = loco_action[i]，然后按电机顺序应用
+                // 我们需要：策略顺序i -> 电机joint2motorIdx[i]，然后按电机顺序应用
+                const targetMotor = new Float32Array(this.numActions);
+                const kpMotor = new Float32Array(this.numActions);
+                const kdMotor = new Float32Array(this.numActions);
+                const qposAdrMotor = new Array(this.numActions);
+                const qvelAdrMotor = new Array(this.numActions);
+                
+                // 初始化（防止undefined）
+                for (let m = 0; m < this.numActions; m++) {
+                  targetMotor[m] = 0.0;
+                  kpMotor[m] = 0.0;
+                  kdMotor[m] = 0.0;
+                }
+                
+                // 重排序到电机顺序
                 for (let i = 0; i < this.numActions; i++) {
-                  if (this.ctrl_adr_policy[i] !== this.joint2motorIdx[i]) {
-                    if (!mismatch) {
-                      console.warn('LocoMode: ctrl_adr_policy != joint2motor_idx, action mapping may be incorrect');
-                      mismatch = true;
+                  const motorIdx = this.joint2motorIdx[i];
+                  if (motorIdx >= 0 && motorIdx < this.numActions) {
+                    targetMotor[motorIdx] = this.actionTarget[i];
+                    kpMotor[motorIdx] = this.kpPolicy ? this.kpPolicy[i] : 0.0;
+                    kdMotor[motorIdx] = this.kdPolicy ? this.kdPolicy[i] : 0.0;
+                    qposAdrMotor[motorIdx] = this.qpos_adr_policy[i];
+                    qvelAdrMotor[motorIdx] = this.qvel_adr_policy[i];
+                  } else {
+                    console.error(`LocoMode: Invalid motorIdx ${motorIdx} for policy index ${i}`);
+                  }
+                }
+                
+                // 按电机顺序应用（与FSMDeploy一致）
+                for (let motorIdx = 0; motorIdx < this.numActions; motorIdx++) {
+                  const ctrl_adr = motorIdx; // 电机顺序 = ctrl索引
+                  const qpos_adr = qposAdrMotor[motorIdx];
+                  const qvel_adr = qvelAdrMotor[motorIdx];
+                  
+                  if (qpos_adr === undefined || qvel_adr === undefined) {
+                    console.error(`LocoMode: Missing qpos/qvel address for motor ${motorIdx}`);
+                    continue;
+                  }
+                  
+                  const targetJpos = targetMotor[motorIdx];
+                  const kp = kpMotor[motorIdx];
+                  const kd = kdMotor[motorIdx];
+                  
+                  const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
+                  let ctrlValue = torque;
+                  const ctrlRange = this.model?.actuator_ctrlrange;
+                  if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
+                    const min = ctrlRange[ctrl_adr * 2];
+                    const max = ctrlRange[(ctrl_adr * 2) + 1];
+                    if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
+                      ctrlValue = Math.min(Math.max(ctrlValue, min), max);
                     }
                   }
+                  this.simulation.ctrl[ctrl_adr] = ctrlValue;
                 }
-              }
-              
-              // 应用动作（按策略顺序，ctrl_adr_policy已映射到正确的电机）
-              for (let i = 0; i < this.numActions; i++) {
-                const qpos_adr = this.qpos_adr_policy[i];
-                const qvel_adr = this.qvel_adr_policy[i];
-                const ctrl_adr = this.ctrl_adr_policy[i];
+              } else {
+                // 原有逻辑：按策略顺序应用
+                for (let i = 0; i < this.numActions; i++) {
+                  const qpos_adr = this.qpos_adr_policy[i];
+                  const qvel_adr = this.qvel_adr_policy[i];
+                  const ctrl_adr = this.ctrl_adr_policy[i];
 
-                const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
-                const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
-                const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
-                const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
-                let ctrlValue = torque;
-                const ctrlRange = this.model?.actuator_ctrlrange;
-                if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
-                  const min = ctrlRange[ctrl_adr * 2];
-                  const max = ctrlRange[(ctrl_adr * 2) + 1];
-                  if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
-                    ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+                  const targetJpos = this.actionTarget ? this.actionTarget[i] : 0.0;
+                  const kp = this.kpPolicy ? this.kpPolicy[i] : 0.0;
+                  const kd = this.kdPolicy ? this.kdPolicy[i] : 0.0;
+                  const torque = kp * (targetJpos - this.simulation.qpos[qpos_adr]) + kd * (0 - this.simulation.qvel[qvel_adr]);
+                  let ctrlValue = torque;
+                  const ctrlRange = this.model?.actuator_ctrlrange;
+                  if (ctrlRange && ctrlRange.length >= (ctrl_adr + 1) * 2) {
+                    const min = ctrlRange[ctrl_adr * 2];
+                    const max = ctrlRange[(ctrl_adr * 2) + 1];
+                    if (Number.isFinite(min) && Number.isFinite(max) && min < max) {
+                      ctrlValue = Math.min(Math.max(ctrlValue, min), max);
+                    }
                   }
+                  this.simulation.ctrl[ctrl_adr] = ctrlValue;
                 }
-                this.simulation.ctrl[ctrl_adr] = ctrlValue;
               }
             }
           } else if (this.control_type === 'torque') {
