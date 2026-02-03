@@ -32,19 +32,15 @@ class RootAngVelB {
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.31: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
+    // v9.0.33: 只对 LocoMode 应用特殊处理，其他策略直接使用原始值
     if (this.isLocoMode) {
-      // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
-      // v9.0.30 取反 Z 轴左旋仍然存在，尝试取反 X 和 Y 轴（roll 和 pitch 方向）
-      const omegaBody = quatApplyInv(
-        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
-        [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
-      );
-      // v9.0.31: 取反角速度 X 和 Y 轴（roll 和 pitch，修复左旋）
+      // LocoMode 左倾修复：尝试不转换角速度（直接使用世界系），看训练是否用的世界系
+      // v9.0.32 各种取反组合都无效，尝试不转换角速度
+      // 直接使用世界系角速度，不取反
       return new Float32Array([
-        -omegaBody[0] * this.scale,
-        -omegaBody[1] * this.scale,
-        omegaBody[2] * this.scale
+        omegaWorld[0] * this.scale,
+        omegaWorld[1] * this.scale,
+        omegaWorld[2] * this.scale
       ]);
     } else {
       // 其他策略：直接使用原始角速度（可能是世界系，但训练时也是世界系）
