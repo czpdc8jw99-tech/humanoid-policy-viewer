@@ -139,7 +139,7 @@
   "dof_pos_scale": 1.0,
   "dof_vel_scale": 1.0,
   "ang_vel_scale": 1.0,
-  "flip_right_roll_sign": false,
+  "flip_right_roll_sign": true,
   "pd_only_mode": false,
   "single_joint_debug": false,
   "single_joint_index": 0,
