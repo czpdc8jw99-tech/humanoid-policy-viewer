@@ -761,14 +761,20 @@ export class MuJoCoDemo {
           }
         } else {
           // 单机器人模式：使用原有方法
-          const state = this.readPolicyState();
-          try {
-            this.actionTarget = await this.policyRunner.step(state);
-            actionTargets = [this.actionTarget]; // 保持数组格式一致
-          } catch (e) {
-            console.error('Inference error in main loop:', e);
-            this.alive = false;
-            break;
+          // LocoMode: 如果启用 pd_only_mode，跳过策略推理，直接用 default_joint_pos
+          if (this.pdOnlyMode && this.defaultJposPolicy) {
+            this.actionTarget = new Float32Array(this.defaultJposPolicy);
+            actionTargets = [this.actionTarget];
+          } else {
+            const state = this.readPolicyState();
+            try {
+              this.actionTarget = await this.policyRunner.step(state);
+              actionTargets = [this.actionTarget]; // 保持数组格式一致
+            } catch (e) {
+              console.error('Inference error in main loop:', e);
+              this.alive = false;
+              break;
+            }
           }
         }
 

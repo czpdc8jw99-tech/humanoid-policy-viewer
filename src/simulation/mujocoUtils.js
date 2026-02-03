@@ -207,6 +207,12 @@ export async function reloadPolicy(policy_path, options = {}) {
   // LocoMode: 右侧 roll 关节（hip/shoulder/ankle）目标符号翻转，用于修正训练与仿真左右约定不一致导致的左倾
   this.flipRightRollSign = config.flip_right_roll_sign === true;
   
+  // LocoMode: 纯 PD 模式（跳过策略，只用 default_joint_pos + PD 控制），用于测试机器人能否静态站立
+  this.pdOnlyMode = config.pd_only_mode === true;
+  if (this.pdOnlyMode) {
+    console.log('LocoMode: PD-only mode enabled - policy inference disabled, using default_joint_pos only');
+  }
+  
   // LocoMode: 检测到joint2motor_idx时，强制使用FSMDeploy的timestep/decimation
   if (this.joint2motorIdx && this.joint2motorIdx.length > 0 && this.model) {
     this._isLocoMode = true;
