@@ -850,6 +850,21 @@ export class MuJoCoDemo {
               }
             } else {
               // 单机器人模式（原有逻辑）
+              // LocoMode: 如果有joint2motor_idx，验证并应用动作
+              if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
+                // 验证：ctrl_adr_policy应该等于joint2motor_idx（策略关节i对应的电机索引）
+                let mismatch = false;
+                for (let i = 0; i < this.numActions; i++) {
+                  if (this.ctrl_adr_policy[i] !== this.joint2motorIdx[i]) {
+                    if (!mismatch) {
+                      console.warn('LocoMode: ctrl_adr_policy != joint2motor_idx, action mapping may be incorrect');
+                      mismatch = true;
+                    }
+                  }
+                }
+              }
+              
+              // 应用动作（按策略顺序，ctrl_adr_policy已映射到正确的电机）
               for (let i = 0; i < this.numActions; i++) {
                 const qpos_adr = this.qpos_adr_policy[i];
                 const qvel_adr = this.qvel_adr_policy[i];

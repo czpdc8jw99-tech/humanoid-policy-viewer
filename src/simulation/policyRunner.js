@@ -16,6 +16,9 @@ export class PolicyRunner {
     this.actionScale = toFloatArray(options.actionScale ?? config.action_scale, this.numActions, 1.0);
     this.defaultJointPos = toFloatArray(options.defaultJointPos ?? [], this.numActions, 0.0);
     this.actionClip = typeof config.action_clip === 'number' ? config.action_clip : 10.0;
+    
+    // LocoMode: joint2motor_idx 用于重排序动作到电机顺序
+    this.joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx.slice() : null;
 
     this.module = new ONNXModule(config.onnx);
     this.inputDict = {};
@@ -41,6 +44,23 @@ export class PolicyRunner {
   async init() {
     await this.module.init();
     this.reset();
+    
+    // LocoMode: 50次预热，让策略状态稳定（类似FSMDeploy）
+    if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
+      const zeroObs = new Float32Array(this.numObs);
+      const zeroTensor = new ort.Tensor('float32', zeroObs, [1, zeroObs.length]);
+      const zeroInput = { policy: zeroTensor };
+      
+      for (let i = 0; i < 50; i++) {
+        try {
+          await this.module.runInference(zeroInput);
+        } catch (e) {
+          // 预热失败不影响，继续
+          break;
+        }
+      }
+      console.log('LocoMode: Policy warmed up with 50 zero-observation runs');
+    }
   }
 
   _buildObsModules(obsConfig) {

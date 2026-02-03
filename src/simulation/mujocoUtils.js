@@ -196,6 +196,9 @@ export async function reloadPolicy(policy_path, options = {}) {
   this.kpPolicy = toFloatArray(config.stiffness, this.numActions, 0.0);
   this.kdPolicy = toFloatArray(config.damping, this.numActions, 0.0);
   this.control_type = config.control_type ?? 'joint_position';
+  
+  // LocoMode: joint2motor_idx 用于重排序动作到电机顺序
+  this.joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx.slice() : null;
 
   if (trackingConfig) {
     trackingConfig.policy_joint_names = policyJointNames.slice();
@@ -239,7 +242,8 @@ export async function reloadPolicy(policy_path, options = {}) {
           tracking: trackingConfig,
           policy_joint_names: policyJointNames,
           action_scale: config.action_scale,
-          default_joint_pos: this.defaultJposPolicy
+          default_joint_pos: this.defaultJposPolicy,
+          joint2motor_idx: config.joint2motor_idx
         },
         {
           policyJointNames,
@@ -270,7 +274,8 @@ export async function reloadPolicy(policy_path, options = {}) {
         tracking: trackingConfig,
         policy_joint_names: policyJointNames,
         action_scale: config.action_scale,
-        default_joint_pos: this.defaultJposPolicy
+        default_joint_pos: this.defaultJposPolicy,
+        joint2motor_idx: config.joint2motor_idx
       },
       {
         policyJointNames,
