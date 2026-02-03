@@ -205,6 +205,13 @@ export async function reloadPolicy(policy_path, options = {}) {
         
         console.log('[init roll joints (actual)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
         
+        // v9.0.18: 打印所有关节角度（用于排查平衡问题）
+        console.log('[init all joints]', Array.from(s.jointPos).map((v, i) => ({
+          idx: i,
+          name: this.policyJointNames[i],
+          val: Number(v).toFixed(4)
+        })));
+        
         // 检查 default_joint_pos 的对称性
         if (this.defaultJposPolicy && this.policyJointNames) {
           const getDefault = (name) => {
@@ -219,6 +226,13 @@ export async function reloadPolicy(policy_path, options = {}) {
           const dRAnk = getDefault('right_ankle_roll_joint') ?? getDefault('right_ankle_roll') ?? getDefault('r_ankle_roll');
           
           console.log('[default_joint_pos roll joints]', { dLHip, dRHip, dLShld, dRShld, dLAnk, dRAnk });
+          
+          // v9.0.18: 打印所有 default_joint_pos（用于排查平衡问题）
+          console.log('[default_joint_pos all]', Array.from(this.defaultJposPolicy).map((v, i) => ({
+            idx: i,
+            name: this.policyJointNames[i],
+            val: Number(v).toFixed(4)
+          })));
           
           // 检查对称性：left 和 right 应该互为相反数（或接近）
           const checkSymmetry = (left, right, name) => {
