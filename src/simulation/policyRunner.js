@@ -47,15 +47,54 @@ export class PolicyRunner {
     this.reset();
     
     // LocoMode: 50次预热，让策略状态稳定（类似FSMDeploy）；最后一次输出写回 lastActions，与 FSMDeploy 第一步 PrevActions 一致
+    // v9.0.19: 发现 warm-up 会产生不对称输出导致左倾，改为禁用 warm-up，使用零初始化
     if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
+      // v9.0.19: 禁用 warm-up，直接使用零初始化（避免 warm-up 产生不对称输出）
+      // 注意：虽然配置中可能有 warm-up，但为了修复左倾，我们强制使用零初始化
+      this.lastActions.fill(0.0);
+      console.log('LocoMode: Warm-up DISABLED (v9.0.19 fix for left tilt) - using zero initialization instead of 50 warm-up runs');
+      
+      // 保留旧代码作为对比（注释掉）
+      /*
       const zeroObs = new Float32Array(this.numObs);
       const zeroTensor = new ort.Tensor('float32', zeroObs, [1, zeroObs.length]);
       const zeroInput = { policy: zeroTensor };
+      
+      // v9.0.19: 检查 warm-up 输入的观测值是否真的全零
+      const checkZeroObs = () => {
+        const nonZero = [];
+        for (let i = 0; i < zeroObs.length; i++) {
+          if (Math.abs(zeroObs[i]) > 1e-6) {
+            nonZero.push({ idx: i, val: zeroObs[i] });
+          }
+        }
+        if (nonZero.length > 0) {
+          console.warn('[warm-up] Non-zero observations detected:', nonZero.slice(0, 10));
+        } else {
+          console.log('[warm-up] All observations are zero ✓');
+        }
+      };
+      checkZeroObs();
+      
       let lastResult = null;
       for (let i = 0; i < 50; i++) {
         try {
           const [result] = await this.module.runInference(zeroInput);
           lastResult = result;
+          
+          // v9.0.19: 检查 warm-up 过程中的 action 输出变化
+          if (i === 0 || i === 24 || i === 49) {
+            const action = result['action']?.data;
+            if (action) {
+              const pickRoll = (name) => {
+                const idx = this.policyJointNames.indexOf(name);
+                return idx >= 0 ? Number(action[idx]).toFixed(4) : null;
+              };
+              const lHip = pickRoll('left_hip_roll_joint') ?? pickRoll('left_hip_roll');
+              const rHip = pickRoll('right_hip_roll_joint') ?? pickRoll('right_hip_roll');
+              console.log(`[warm-up step ${i + 1}] hip_roll: L=${lHip} R=${rHip}`);
+            }
+          }
         } catch (e) {
           break;
         }
@@ -95,6 +134,7 @@ export class PolicyRunner {
       } else {
         console.log('LocoMode: Policy warmed up with 50 zero-observation runs');
       }
+      */
     }
   }
 
