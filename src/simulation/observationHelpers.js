@@ -62,13 +62,23 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.34: 恢复标准计算 - 对所有策略都使用标准重力计算
-    // v9.0.33 及之前各种修改都无效，恢复标准计算，检查问题是否在观测值符号
-    const gravityBody = quatApplyInv(
-      [quat[0], quat[1], quat[2], quat[3]],
-      gravityWorld
-    );
-    return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
+    // v9.0.36: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.35 flip_right_roll_sign 启用后左倒变前倒，尝试配合重力 Y 轴取反
+    if (this.isLocoMode) {
+      const gravityBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+        gravityWorld
+      );
+      // v9.0.36: 配合 flip_right_roll_sign，只取反重力 Y 轴
+      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
+    } else {
+      // 其他策略：标准计算
+      const gravityBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]],
+        gravityWorld
+      );
+      return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
+    }
   }
 }
 
