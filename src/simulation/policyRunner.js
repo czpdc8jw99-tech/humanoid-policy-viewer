@@ -206,27 +206,62 @@ export class PolicyRunner {
         }
       }
 
-      // v9.0.18: 打印第一帧的观测值（用于排查左倾）
+      // v9.0.20: 打印第一帧的观测值（用于排查左倾）
       if (this.joint2motorIdx && this._stepCount === 0) {
-        // 提取观测值：RootAngVelB(0:3), ProjectedGravityB(3:6), Command(6:9), ...
+        // 提取观测值：RootAngVelB(0:3), ProjectedGravityB(3:6), Command(6:9), JointPosRel(9:9+29), JointVel(9+29:9+58), PrevActions(9+58:9+87)
         const rootAngVelB = Array.from(obsForPolicy.slice(0, 3)).map(v => Number(v).toFixed(4));
         const gravityB = Array.from(obsForPolicy.slice(3, 6)).map(v => Number(v).toFixed(4));
         const command = Array.from(obsForPolicy.slice(6, 9)).map(v => Number(v).toFixed(4));
         const jointPosRel = Array.from(obsForPolicy.slice(9, 9 + this.numActions)).map(v => Number(v).toFixed(4));
         const jointVel = Array.from(obsForPolicy.slice(9 + this.numActions, 9 + 2 * this.numActions)).map(v => Number(v).toFixed(4));
+        const prevActions = prevActionsOffset >= 0 ? Array.from(obsForPolicy.slice(prevActionsOffset, prevActionsOffset + prevActionsSize)).map(v => Number(v).toFixed(4)) : null;
+        
+        // v9.0.20: 检查 roll 关节的观测值对称性
+        const checkObsSymmetry = (arr, name) => {
+          if (!arr || arr.length < this.numActions) return;
+          const pickRoll = (jointName) => {
+            const idx = this.policyJointNames.indexOf(jointName);
+            return idx >= 0 ? Number(arr[idx]) : null;
+          };
+          const lHip = pickRoll('left_hip_roll_joint') ?? pickRoll('left_hip_roll');
+          const rHip = pickRoll('right_hip_roll_joint') ?? pickRoll('right_hip_roll');
+          const lShld = pickRoll('left_shoulder_roll_joint') ?? pickRoll('left_shoulder_roll');
+          const rShld = pickRoll('right_shoulder_roll_joint') ?? pickRoll('right_shoulder_roll');
+          const lAnk = pickRoll('left_ankle_roll_joint') ?? pickRoll('left_ankle_roll');
+          const rAnk = pickRoll('right_ankle_roll_joint') ?? pickRoll('right_ankle_roll');
+          
+          if (lHip !== null && rHip !== null) {
+            const symmetric = Math.abs(lHip + rHip) < 0.01;
+            console.log(`[obs symmetry ${name} hip_roll] L=${lHip.toFixed(4)} R=${rHip.toFixed(4)} ${symmetric ? '✓' : '✗'}`);
+          }
+          if (lShld !== null && rShld !== null) {
+            const symmetric = Math.abs(lShld + rShld) < 0.01;
+            console.log(`[obs symmetry ${name} shoulder_roll] L=${lShld.toFixed(4)} R=${rShld.toFixed(4)} ${symmetric ? '✓' : '✗'}`);
+          }
+          if (lAnk !== null && rAnk !== null) {
+            const symmetric = Math.abs(lAnk + rAnk) < 0.01;
+            console.log(`[obs symmetry ${name} ankle_roll] L=${lAnk.toFixed(4)} R=${rAnk.toFixed(4)} ${symmetric ? '✓' : '✗'}`);
+          }
+        };
+        
         console.log('[step 1 observations]', {
           rootAngVelB,
           gravityB,
           command,
           jointPosRel: jointPosRel.slice(0, 10), // 只打印前10个，避免太长
           jointVel: jointVel.slice(0, 10),
-          prevActions: prevActionsOffset >= 0 ? Array.from(obsForPolicy.slice(prevActionsOffset, prevActionsOffset + prevActionsSize)).map(v => Number(v).toFixed(4)) : null,
+          prevActions: prevActions ? prevActions.slice(0, 10) : null,
           // 打印原始状态（用于对比）
           rawState: {
             rootQuat: state.rootQuat ? Array.from(state.rootQuat).map(v => Number(v).toFixed(4)) : null,
-            rootAngVel: state.rootAngVel ? Array.from(state.rootAngVel).map(v => Number(v).toFixed(4)) : null
+            rootAngVel: state.rootAngVel ? state.rootAngVel ? Array.from(state.rootAngVel).map(v => Number(v).toFixed(4)) : null : null
           }
         });
+        
+        // 检查观测值对称性
+        checkObsSymmetry(jointPosRel, 'jointPosRel');
+        checkObsSymmetry(jointVel, 'jointVel');
+        if (prevActions) checkObsSymmetry(prevActions, 'prevActions');
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
