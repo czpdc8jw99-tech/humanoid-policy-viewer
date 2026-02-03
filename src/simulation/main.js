@@ -816,6 +816,13 @@ export class MuJoCoDemo {
           this._printedInitOnce = true;
           const qpos0 = Array.from(this.simulation.qpos.slice(0, 7)).map((v) => Number(v).toFixed(6));
           console.log('[init qpos[0..6]] [x,y,z,q0,q1,q2,q3]=', qpos0);
+          
+          // 检查 rootQuat 是否接近 [1,0,0,0]（直立）
+          const rootQuat = [qpos0[3], qpos0[4], qpos0[5], qpos0[6]].map(Number);
+          const quatNorm = Math.sqrt(rootQuat.reduce((sum, v) => sum + v * v, 0));
+          const isUpright = Math.abs(rootQuat[0] - 1.0) < 0.1 && Math.abs(rootQuat[1]) < 0.1 && Math.abs(rootQuat[2]) < 0.1 && Math.abs(rootQuat[3]) < 0.1;
+          console.log(`[init rootQuat] ${isUpright ? '✓ 接近直立 [1,0,0,0]' : '✗ 可能倾斜'} norm=${quatNorm.toFixed(4)}`);
+          
           try {
             const s = this.readPolicyState?.();
             if (s?.jointPos && this.policyJointNames && this.policyJointNames.length === s.jointPos.length) {
@@ -823,11 +830,45 @@ export class MuJoCoDemo {
                 const idx = this.policyJointNames.indexOf(name);
                 return idx >= 0 ? { idx, val: Number(s.jointPos[idx]).toFixed(6) } : null;
               };
-              const lHip = pick('left_hip_roll') ?? pick('l_hip_roll');
-              const rHip = pick('right_hip_roll') ?? pick('r_hip_roll');
-              const lAnk = pick('left_ankle_roll') ?? pick('l_ankle_roll');
-              const rAnk = pick('right_ankle_roll') ?? pick('r_ankle_roll');
-              console.log('[init roll joints]', { lHip, rHip, lAnk, rAnk });
+              
+              // 检查所有 roll 关节的对称性
+              const lHip = pick('left_hip_roll_joint') ?? pick('left_hip_roll') ?? pick('l_hip_roll');
+              const rHip = pick('right_hip_roll_joint') ?? pick('right_hip_roll') ?? pick('r_hip_roll');
+              const lShld = pick('left_shoulder_roll_joint') ?? pick('left_shoulder_roll') ?? pick('l_shoulder_roll');
+              const rShld = pick('right_shoulder_roll_joint') ?? pick('right_shoulder_roll') ?? pick('r_shoulder_roll');
+              const lAnk = pick('left_ankle_roll_joint') ?? pick('left_ankle_roll') ?? pick('l_ankle_roll');
+              const rAnk = pick('right_ankle_roll_joint') ?? pick('right_ankle_roll') ?? pick('r_ankle_roll');
+              
+              console.log('[init roll joints (actual)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
+              
+              // 检查 default_joint_pos 的对称性
+              if (this.defaultJposPolicy && this.policyJointNames) {
+                const getDefault = (name) => {
+                  const idx = this.policyJointNames.indexOf(name);
+                  return idx >= 0 ? { idx, val: Number(this.defaultJposPolicy[idx]).toFixed(6) } : null;
+                };
+                const dLHip = getDefault('left_hip_roll_joint') ?? getDefault('left_hip_roll') ?? getDefault('l_hip_roll');
+                const dRHip = getDefault('right_hip_roll_joint') ?? getDefault('right_hip_roll') ?? getDefault('r_hip_roll');
+                const dLShld = getDefault('left_shoulder_roll_joint') ?? getDefault('left_shoulder_roll') ?? getDefault('l_shoulder_roll');
+                const dRShld = getDefault('right_shoulder_roll_joint') ?? getDefault('right_shoulder_roll') ?? getDefault('r_shoulder_roll');
+                const dLAnk = getDefault('left_ankle_roll_joint') ?? getDefault('left_ankle_roll') ?? getDefault('l_ankle_roll');
+                const dRAnk = getDefault('right_ankle_roll_joint') ?? getDefault('right_ankle_roll') ?? getDefault('r_ankle_roll');
+                
+                console.log('[default_joint_pos roll joints]', { dLHip, dRHip, dLShld, dRShld, dLAnk, dRAnk });
+                
+                // 检查对称性：left 和 right 应该互为相反数（或接近）
+                const checkSymmetry = (left, right, name) => {
+                  if (left && right) {
+                    const lv = Number(left.val);
+                    const rv = Number(right.val);
+                    const symmetric = Math.abs(lv + rv) < 0.01; // 允许 0.01 的误差
+                    console.log(`[symmetry ${name}] left=${lv.toFixed(4)} right=${rv.toFixed(4)} ${symmetric ? '✓ 对称' : '✗ 不对称'}`);
+                  }
+                };
+                checkSymmetry(dLHip, dRHip, 'hip_roll');
+                checkSymmetry(dLShld, dRShld, 'shoulder_roll');
+                checkSymmetry(dLAnk, dRAnk, 'ankle_roll');
+              }
             } else if (s?.jointPos) {
               // 回退：按历史排查索引（可能不适用于所有模型）
               const safe = (i) => (i >= 0 && i < s.jointPos.length ? Number(s.jointPos[i]).toFixed(6) : null);
