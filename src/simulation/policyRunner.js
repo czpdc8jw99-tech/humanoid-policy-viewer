@@ -160,6 +160,14 @@ export class PolicyRunner {
         this.lastActions[i] = clamped;
       }
 
+      // 诊断：打印前几帧的原始动作（L/R roll），用于分析左倾时策略是否在“往右修正”
+      if (this.joint2motorIdx && this._stepCount <= 3) {
+        const hipRollL = this.lastActions[3], hipRollR = this.lastActions[4];
+        const shoulderRollL = this.lastActions[15], shoulderRollR = this.lastActions[16];
+        const ankleRollL = this.lastActions[17], ankleRollR = this.lastActions[18];
+        console.log(`[LocoMode action ${this._stepCount}] hip_roll L=${hipRollL.toFixed(3)} R=${hipRollR.toFixed(3)}, shoulder_roll L=${shoulderRollL.toFixed(3)} R=${shoulderRollR.toFixed(3)}, ankle_roll L=${ankleRollL.toFixed(3)} R=${ankleRollR.toFixed(3)}`);
+      }
+
       const target = new Float32Array(this.numActions);
       for (let i = 0; i < this.numActions; i++) {
         target[i] = this.defaultJointPos[i] + this.actionScale[i] * this.lastActions[i];

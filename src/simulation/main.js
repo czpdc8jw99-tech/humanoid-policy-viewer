@@ -857,8 +857,20 @@ export class MuJoCoDemo {
               // 单机器人模式（原有逻辑）
               // LocoMode: 如果有joint2motor_idx，按电机顺序应用动作（与FSMDeploy一致）
               if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.actionTarget) {
+                // 可选：对右侧 roll 关节（policy 索引 4,16,18）做目标符号翻转，修正左倾
+                const effectiveTarget = new Float32Array(this.numActions);
+                if (this.flipRightRollSign && this.defaultJposPolicy) {
+                  const rightRollIndices = [4, 16, 18]; // right_hip_roll, right_shoulder_roll, right_ankle_roll
+                  for (let i = 0; i < this.numActions; i++) {
+                    effectiveTarget[i] = rightRollIndices.includes(i)
+                      ? 2 * this.defaultJposPolicy[i] - this.actionTarget[i]
+                      : this.actionTarget[i];
+                  }
+                } else {
+                  effectiveTarget.set(this.actionTarget);
+                }
+                
                 // FSMDeploy: action_reorder[motor_idx] = loco_action[i]，然后按电机顺序应用
-                // 我们需要：策略顺序i -> 电机joint2motorIdx[i]，然后按电机顺序应用
                 const targetMotor = new Float32Array(this.numActions);
                 const kpMotor = new Float32Array(this.numActions);
                 const kdMotor = new Float32Array(this.numActions);
@@ -872,11 +884,11 @@ export class MuJoCoDemo {
                   kdMotor[m] = 0.0;
                 }
                 
-                // 重排序到电机顺序
+                // 重排序到电机顺序（使用 effectiveTarget）
                 for (let i = 0; i < this.numActions; i++) {
                   const motorIdx = this.joint2motorIdx[i];
                   if (motorIdx >= 0 && motorIdx < this.numActions) {
-                    targetMotor[motorIdx] = this.actionTarget[i];
+                    targetMotor[motorIdx] = effectiveTarget[i];
                     kpMotor[motorIdx] = this.kpPolicy ? this.kpPolicy[i] : 0.0;
                     kdMotor[motorIdx] = this.kdPolicy ? this.kdPolicy[i] : 0.0;
                     qposAdrMotor[motorIdx] = this.qpos_adr_policy[i];

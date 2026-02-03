@@ -139,5 +139,6 @@
   "dof_pos_scale": 1.0,
   "dof_vel_scale": 1.0,
   "ang_vel_scale": 1.0,
+  "flip_right_roll_sign": true,
   "description": "Locomotion policy with gamepad control - 手柄操控行走策略"
 }

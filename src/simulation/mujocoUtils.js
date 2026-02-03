@@ -204,6 +204,9 @@ export async function reloadPolicy(policy_path, options = {}) {
   // LocoMode: joint2motor_idx 用于重排序动作到电机顺序
   this.joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx.slice() : null;
   
+  // LocoMode: 右侧 roll 关节（hip/shoulder/ankle）目标符号翻转，用于修正训练与仿真左右约定不一致导致的左倾
+  this.flipRightRollSign = config.flip_right_roll_sign === true;
+  
   // LocoMode: 检测到joint2motor_idx时，强制使用FSMDeploy的timestep/decimation
   if (this.joint2motorIdx && this.joint2motorIdx.length > 0 && this.model) {
     this._isLocoMode = true;
