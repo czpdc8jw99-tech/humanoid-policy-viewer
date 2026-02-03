@@ -30,6 +30,7 @@ export class MuJoCoDemo {
     // 调试：断开控制（纯物理）+ 初始化一次性打印（用于“生成就左倾”定位）
     this.debugDisableControl = false;
     this._printedInitOnce = false;
+    this._firstStepLogged = false; // v9.0.18: 第一帧日志标志
     this.setDisableControl = (enabled) => {
       this.debugDisableControl = !!enabled;
       console.log(`[debugDisableControl] ${this.debugDisableControl ? 'ON: ctrl will be zeroed (pure physics)' : 'OFF: normal control'}`);
@@ -983,6 +984,30 @@ export class MuJoCoDemo {
                     effectiveTarget[i] = rightRollIndices.includes(i)
                       ? 2 * this.defaultJposPolicy[i] - this.actionTarget[i]
                       : this.actionTarget[i];
+                  }
+                  
+                  // v9.0.18: 打印第一帧应用 flip_right_roll_sign 后的 roll 关节目标值
+                  if (this._firstStepLogged !== true) {
+                    this._firstStepLogged = true;
+                    const pickRoll = (name) => {
+                      const idx = this.policyJointNames?.indexOf(name);
+                      if (idx < 0) return null;
+                      return {
+                        idx,
+                        name,
+                        default: Number(this.defaultJposPolicy[idx]).toFixed(4),
+                        actionTarget: Number(this.actionTarget[idx]).toFixed(4),
+                        effectiveTarget: Number(effectiveTarget[idx]).toFixed(4),
+                        flipped: rightRollIndices.includes(idx)
+                      };
+                    };
+                    const lHip = pickRoll('left_hip_roll_joint') ?? pickRoll('left_hip_roll');
+                    const rHip = pickRoll('right_hip_roll_joint') ?? pickRoll('right_hip_roll');
+                    const lShld = pickRoll('left_shoulder_roll_joint') ?? pickRoll('left_shoulder_roll');
+                    const rShld = pickRoll('right_shoulder_roll_joint') ?? pickRoll('right_shoulder_roll');
+                    const lAnk = pickRoll('left_ankle_roll_joint') ?? pickRoll('left_ankle_roll');
+                    const rAnk = pickRoll('right_ankle_roll_joint') ?? pickRoll('right_ankle_roll');
+                    console.log('[step 1 effectiveTarget (after flip_right_roll_sign)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
                   }
                 } else {
                   effectiveTarget.set(this.actionTarget);

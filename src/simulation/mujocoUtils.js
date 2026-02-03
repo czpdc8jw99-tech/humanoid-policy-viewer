@@ -114,6 +114,7 @@ export async function reloadPolicy(policy_path, options = {}) {
   
   // v9.0.18: 每次重新加载策略时重置打印标志，确保每次都能打印初始化状态
   this._printedInitOnce = false;
+  this._firstStepLogged = false; // 重置第一帧日志标志
 
   // 等待所有policyRunner完成推理 (v7.0.4)
   const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;

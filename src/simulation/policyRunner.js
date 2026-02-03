@@ -66,6 +66,19 @@ export class PolicyRunner {
           this.lastActions[j] = data[j];
         }
         console.log('LocoMode: Policy warmed up with 50 zero-observation runs, lastActions set from final warm-up output');
+        
+        // v9.0.18: 打印 warm-up 输出的 roll 关节（用于排查左倾）
+        const pickRoll = (name) => {
+          const idx = this.policyJointNames.indexOf(name);
+          return idx >= 0 ? { idx, name, val: Number(data[idx]).toFixed(4) } : null;
+        };
+        const lHip = pickRoll('left_hip_roll_joint') ?? pickRoll('left_hip_roll');
+        const rHip = pickRoll('right_hip_roll_joint') ?? pickRoll('right_hip_roll');
+        const lShld = pickRoll('left_shoulder_roll_joint') ?? pickRoll('left_shoulder_roll');
+        const rShld = pickRoll('right_shoulder_roll_joint') ?? pickRoll('right_shoulder_roll');
+        const lAnk = pickRoll('left_ankle_roll_joint') ?? pickRoll('left_ankle_roll');
+        const rAnk = pickRoll('right_ankle_roll_joint') ?? pickRoll('right_ankle_roll');
+        console.log('[warm-up lastActions (roll joints)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
       } else {
         console.log('LocoMode: Policy warmed up with 50 zero-observation runs');
       }
@@ -140,6 +153,20 @@ export class PolicyRunner {
         }
       }
 
+      // v9.0.18: 打印第一帧的观测值（用于排查左倾）
+      if (this.joint2motorIdx && this._stepCount === 0) {
+        // 提取观测值：RootAngVelB(0:3), ProjectedGravityB(3:6), Command(6:9), ...
+        const rootAngVelB = Array.from(obsForPolicy.slice(0, 3)).map(v => Number(v).toFixed(4));
+        const gravityB = Array.from(obsForPolicy.slice(3, 6)).map(v => Number(v).toFixed(4));
+        const command = Array.from(obsForPolicy.slice(6, 9)).map(v => Number(v).toFixed(4));
+        console.log('[step 1 observations]', {
+          rootAngVelB,
+          gravityB,
+          command,
+          prevActions: prevActionsOffset >= 0 ? Array.from(obsForPolicy.slice(prevActionsOffset, prevActionsOffset + prevActionsSize)).map(v => Number(v).toFixed(4)) : null
+        });
+      }
+
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
 
       if (this.joint2motorIdx) {
@@ -159,6 +186,21 @@ export class PolicyRunner {
         const value = action[i];
         const clamped = clip !== Infinity ? Math.max(-clip, Math.min(clip, value)) : value;
         this.lastActions[i] = clamped;
+      }
+
+      // v9.0.18: 打印第一帧的 action 输出（用于排查左倾）
+      if (this.joint2motorIdx && this._stepCount === 1) {
+        const pickRoll = (name) => {
+          const idx = this.policyJointNames.indexOf(name);
+          return idx >= 0 ? { idx, name, action: Number(action[idx]).toFixed(4), lastAction: Number(this.lastActions[idx]).toFixed(4) } : null;
+        };
+        const lHip = pickRoll('left_hip_roll_joint') ?? pickRoll('left_hip_roll');
+        const rHip = pickRoll('right_hip_roll_joint') ?? pickRoll('right_hip_roll');
+        const lShld = pickRoll('left_shoulder_roll_joint') ?? pickRoll('left_shoulder_roll');
+        const rShld = pickRoll('right_shoulder_roll_joint') ?? pickRoll('right_shoulder_roll');
+        const lAnk = pickRoll('left_ankle_roll_joint') ?? pickRoll('left_ankle_roll');
+        const rAnk = pickRoll('right_ankle_roll_joint') ?? pickRoll('right_ankle_roll');
+        console.log('[step 1 action output (roll joints)]', { lHip, rHip, lShld, rShld, lAnk, rAnk });
       }
 
       const target = new Float32Array(this.numActions);
