@@ -19,12 +19,16 @@ class BootIndicator {
 }
 
 class RootAngVelB {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+    this.scale = kwargs.ang_vel_scale ?? policy?.config?.ang_vel_scale ?? 1.0;
+  }
   get size() {
     return 3;
   }
-
   compute(state) {
-    return new Float32Array(state.rootAngVel);
+    const v = state.rootAngVel;
+    return new Float32Array([v[0] * this.scale, v[1] * this.scale, v[2] * this.scale]);
   }
 }
 
@@ -134,10 +138,13 @@ class JointPosRel {
 
   compute() {
     const out = new Float32Array(this.posSteps.length * this.numJoints);
+    const dofPosScale = this.policy?.config?.dof_pos_scale != null ? this.policy.config.dof_pos_scale : 1.0;
     let offset = 0;
     for (const step of this.posSteps) {
       const idx = Math.min(step, this.history.length - 1);
-      out.set(this.history[idx], offset);
+      for (let i = 0; i < this.numJoints; i++) {
+        out[offset + i] = this.history[idx][i] * dofPosScale;
+      }
       offset += this.numJoints;
     }
     return out;
@@ -153,7 +160,7 @@ class JointVel {
     this.policy = policy;
     this.velSteps = vel_steps.slice();
     this.numJoints = policy.numActions;
-    this.velScale = kwargs.vel_scale ?? 1.0;
+    this.velScale = kwargs.vel_scale ?? (policy?.config?.dof_vel_scale != null ? policy.config.dof_vel_scale : 1.0);
     
     this.maxStep = Math.max(...this.velSteps);
     this.history = Array.from({ length: this.maxStep + 1 }, () => new Float32Array(this.numJoints));

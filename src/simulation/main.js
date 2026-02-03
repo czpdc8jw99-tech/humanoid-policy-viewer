@@ -338,12 +338,17 @@ export class MuJoCoDemo {
   async reload(mjcf_path) {
     await this.reloadScene(mjcf_path);
     this.updateFollowBodyId();
+    // timestep/decimation 会在 reloadPolicy 中根据策略类型设置（LocoMode会强制为0.003/7）
+    // 这里先设置默认值，reloadPolicy会覆盖
     this.timestep = this.model.opt.timestep;
     this.decimation = Math.max(1, Math.round(0.02 / this.timestep));
 
-    console.log('timestep:', this.timestep, 'decimation:', this.decimation);
-
     await this.reloadPolicy(this.currentPolicyPath ?? defaultPolicy);
+    // reloadPolicy后，timestep/decimation可能已被LocoMode修改，重新同步
+    this.timestep = this.model.opt.timestep;
+    this.decimation = this.decimation; // 已在reloadPolicy中设置
+    
+    console.log('timestep:', this.timestep, 'decimation:', this.decimation);
     this.alive = true;
   }
 
@@ -1058,11 +1063,20 @@ export class MuJoCoDemo {
     const qvel = this.simulation.qvel;
     const jointPos = new Float32Array(this.numActions);
     const jointVel = new Float32Array(this.numActions);
-    for (let i = 0; i < this.numActions; i++) {
-      const qposAdr = this.qpos_adr_policy[i];
-      const qvelAdr = this.qvel_adr_policy[i];
-      jointPos[i] = qpos[qposAdr];
-      jointVel[i] = qvel[qvelAdr];
+    // LocoMode: 与 FSMDeploy 一致，按电机顺序读 qpos/qvel 再按 joint2motor_idx 得到策略顺序
+    if (this.joint2motorIdx && this.qpos_adr_by_motor && this.qvel_adr_by_motor) {
+      for (let i = 0; i < this.numActions; i++) {
+        const m = this.joint2motorIdx[i];
+        if (m >= 0 && m < this.qpos_adr_by_motor.length) {
+          jointPos[i] = qpos[this.qpos_adr_by_motor[m]];
+          jointVel[i] = qvel[this.qvel_adr_by_motor[m]];
+        }
+      }
+    } else {
+      for (let i = 0; i < this.numActions; i++) {
+        jointPos[i] = qpos[this.qpos_adr_policy[i]];
+        jointVel[i] = qvel[this.qvel_adr_policy[i]];
+      }
     }
     const rootPos = new Float32Array([qpos[0], qpos[1], qpos[2]]);
     const rootQuat = new Float32Array([qpos[3], qpos[4], qpos[5], qpos[6]]);

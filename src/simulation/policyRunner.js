@@ -120,18 +120,27 @@ export class PolicyRunner {
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
 
-      // LocoMode诊断：打印前3帧的观测值（检查左右对称性）
+      // LocoMode诊断：打印前3帧的观测值（观测顺序: angVel 0-2, gravity 3-5, cmd 6-8, jointPos 9-37, jointVel 38-66, prevAction 67-95）
       if (this.joint2motorIdx && this._stepCount < 3) {
         const angVel = obsForPolicy.slice(0, 3);
         const gravity = obsForPolicy.slice(3, 6);
         const cmd = obsForPolicy.slice(6, 9);
         const jointPos = obsForPolicy.slice(9, 9 + this.numActions);
+        const jointVel = obsForPolicy.slice(9 + this.numActions, 9 + this.numActions * 2);
         console.log(`[LocoMode Step ${this._stepCount}] angVel: [${angVel.map(v => v.toFixed(3)).join(', ')}], gravity: [${gravity.map(v => v.toFixed(3)).join(', ')}], cmd: [${cmd.map(v => v.toFixed(3)).join(', ')}]`);
-        // 检查左右对称关节（left_shoulder vs right_shoulder）
-        const leftShoulderIdx = this.policyJointNames.indexOf('left_shoulder_pitch_joint');
-        const rightShoulderIdx = this.policyJointNames.indexOf('right_shoulder_pitch_joint');
-        if (leftShoulderIdx >= 0 && rightShoulderIdx >= 0) {
-          console.log(`  Shoulder pitch: left=${jointPos[leftShoulderIdx].toFixed(3)}, right=${jointPos[rightShoulderIdx].toFixed(3)}`);
+        // 检查左右对称关节（policy 顺序：左/右交替）
+        const pairs = [
+          ['left_hip_roll_joint', 'right_hip_roll_joint'],
+          ['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
+          ['left_shoulder_roll_joint', 'right_shoulder_roll_joint'],
+          ['left_ankle_roll_joint', 'right_ankle_roll_joint']
+        ];
+        for (const [leftName, rightName] of pairs) {
+          const li = this.policyJointNames.indexOf(leftName);
+          const ri = this.policyJointNames.indexOf(rightName);
+          if (li >= 0 && ri >= 0) {
+            console.log(`  ${leftName.replace('_joint', '')}: pos L=${jointPos[li].toFixed(3)} R=${jointPos[ri].toFixed(3)}, vel L=${jointVel[li].toFixed(3)} R=${jointVel[ri].toFixed(3)}`);
+          }
         }
         this._stepCount++;
       }

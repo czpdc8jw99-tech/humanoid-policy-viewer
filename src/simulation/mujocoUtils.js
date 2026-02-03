@@ -102,6 +102,10 @@ export async function reloadScene(mjcf_path) {
 
   this.timestep = this.model.opt.timestep;
   this.decimation = Math.max(1, Math.round(0.02 / this.timestep));
+  
+  // LocoMode: 检测并应用FSMDeploy兼容的timestep/decimation
+  // FSMDeploy使用: timestep=0.003, decimation=7, 控制周期=0.021秒
+  this._isLocoMode = false; // 将在reloadPolicy中设置
 }
 
 export async function reloadPolicy(policy_path, options = {}) {
@@ -199,6 +203,42 @@ export async function reloadPolicy(policy_path, options = {}) {
   
   // LocoMode: joint2motor_idx 用于重排序动作到电机顺序
   this.joint2motorIdx = Array.isArray(config.joint2motor_idx) ? config.joint2motor_idx.slice() : null;
+  
+  // LocoMode: 检测到joint2motor_idx时，强制使用FSMDeploy的timestep/decimation
+  if (this.joint2motorIdx && this.joint2motorIdx.length > 0 && this.model) {
+    this._isLocoMode = true;
+    // FSMDeploy配置: timestep=0.003, decimation=7
+    const locoTimestep = 0.003;
+    const locoDecimation = 7;
+    if (Math.abs(this.model.opt.timestep - locoTimestep) > 1e-6) {
+      console.log(`LocoMode: Setting timestep from ${this.model.opt.timestep} to ${locoTimestep} (FSMDeploy compatible)`);
+      this.model.opt.timestep = locoTimestep;
+      this.timestep = locoTimestep;
+    }
+    if (this.decimation !== locoDecimation) {
+      console.log(`LocoMode: Setting decimation from ${this.decimation} to ${locoDecimation} (FSMDeploy compatible)`);
+      this.decimation = locoDecimation;
+    }
+  }
+  
+  // LocoMode: 按电机顺序的 qpos/qvel 地址，与 FSMDeploy 的 qj=d.qpos[7:] / dqj=d.qvel[6:] 一致
+  if (this.joint2motorIdx && this.model) {
+    const jointTransmission = this.mujoco.mjtTrn.mjTRN_JOINT.value;
+    this.qpos_adr_by_motor = [];
+    this.qvel_adr_by_motor = [];
+    for (let m = 0; m < this.model.nu; m++) {
+      if (this.model.actuator_trntype[m] !== jointTransmission) continue;
+      const jointIdx = this.model.actuator_trnid[2 * m];
+      this.qpos_adr_by_motor[m] = this.model.jnt_qposadr[jointIdx];
+      this.qvel_adr_by_motor[m] = this.model.jnt_dofadr[jointIdx];
+    }
+  } else {
+    this.qpos_adr_by_motor = null;
+    this.qvel_adr_by_motor = null;
+  }
+  if (this.qpos_adr_by_motor?.length) {
+    console.log('LocoMode: observation uses motor-order qpos/qvel then joint2motor_idx (FSMDeploy compatible)');
+  }
   
   // LocoMode: 诊断 - 检查 ctrl_adr_policy 是否与 joint2motor_idx 一致
   if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.ctrl_adr_policy.length === this.numActions) {
