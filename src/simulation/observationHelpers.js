@@ -32,17 +32,18 @@ class RootAngVelB {
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.26: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
+    // v9.0.29: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
     if (this.isLocoMode) {
       // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
-      // 使用原始四元数顺序，与重力保持一致
+      // v9.0.28 出现左旋，尝试只取反角速度 Y 轴（与重力 Y 轴对应）
       const omegaBody = quatApplyInv(
         [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
         [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
       );
+      // v9.0.29: 只取反角速度 Y 轴（对应重力 Y 轴取反）
       return new Float32Array([
         omegaBody[0] * this.scale,
-        omegaBody[1] * this.scale,
+        -omegaBody[1] * this.scale,
         omegaBody[2] * this.scale
       ]);
     } else {
@@ -72,17 +73,17 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.28: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.29: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
     if (this.isLocoMode) {
-      // LocoMode 左倾修复：使用原始四元数顺序，只取反重力 X 轴（前后方向）
-      // v9.0.27 整个向量取反导致往后倒，说明 Z 轴不应该取反
-      // 尝试只取反 X 轴（前后方向），保留 Y 和 Z 不变
+      // LocoMode 左倾修复：使用原始四元数顺序，只取反重力 Y 轴（左右方向）
+      // v9.0.28 取反 X 轴导致前倾倒，说明 X 轴不应该取反
+      // 回到只取反 Y 轴（左右方向），与角速度 Y 轴取反保持一致
       const gravityBody = quatApplyInv(
         [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
         gravityWorld
       );
-      // v9.0.28: 原始四元数顺序 + 只取反 X 轴（测试前后方向约定）
-      return new Float32Array([-gravityBody[0], gravityBody[1], gravityBody[2]]);
+      // v9.0.29: 原始四元数顺序 + 只取反 Y 轴（与角速度 Y 轴取反保持一致）
+      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
     } else {
       // 其他策略：标准计算
       const gravityBody = quatApplyInv(
