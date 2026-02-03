@@ -18,7 +18,8 @@
 | v9.0.33 | `[w,x,y,z]` | 只取反 Y `[gx,-gy,gz]` | 不转换（世界系） | false | 没改变（左旋+左前倒） |
 | v9.0.34 | `[w,x,y,z]` | 标准计算 `[gx,gy,gz]` | 标准转换 | false | 左旋+左倒 |
 | v9.0.35 | `[w,x,y,z]` | 标准计算 `[gx,gy,gz]` | 标准转换 | **true** | 左旋+前倒 |
-| v9.0.36 | `[w,x,y,z]` | 只取反 Y `[gx,-gy,gz]` | 标准转换 | **true** | **向左倒** |
+| v9.0.36 | `[w,x,y,z]` | 只取反 Y `[gx,-gy,gz]` | 标准转换 | **true** | 向左倒 |
+| v9.0.37 | `[w,x,y,z]` | 取反 X+Y `[-gx,-gy,gz]` | 标准转换 | **true** | **基本往左倒** |
 
 ## 关键发现
 
@@ -26,11 +27,14 @@
 2. **`flip_right_roll_sign` 有影响**：v9.0.35 启用后，左倒变为前倒，说明动作应用方向有影响
 3. **重力 Y 轴取反单独无效**：v9.0.26, v9.0.29, v9.0.31, v9.0.33 都试过只取反 Y，仍然左倾
 4. **角速度各种取反组合都无效**：尝试了 Y、Z、X+Y 等各种组合，左旋问题持续存在
-5. **当前状态（v9.0.36）**：`flip_right_roll_sign=true` + 重力 Y 取反 → 向左倒（仍有问题）
+5. **当前状态（v9.0.37）**：`flip_right_roll_sign=true` + 重力 X+Y 取反 → 基本往左倒（仍有问题）
+6. **`flip_right_roll_sign` 的影响**：启用后左倒变为前倒（v9.0.35），说明动作应用方向有影响，但单独启用无法解决问题
 
 ## 下一步建议
 
-1. 尝试 `flip_right_roll_sign=true` + 重力 X+Y 取反
+1. ✅ 已尝试：`flip_right_roll_sign=true` + 重力 X+Y 取反（v9.0.37）→ 仍往左倒
 2. 尝试 `flip_right_roll_sign=true` + 角速度 X+Y 取反
-3. 检查 `default_joint_pos` 配置是否与训练一致
-4. 检查其他可能的原因（如 Command 观测值、PrevActions 等）
+3. 尝试 `flip_right_roll_sign=true` + 重力 X+Y 取反 + 角速度 X+Y 取反
+4. 检查 `default_joint_pos` 配置是否与训练一致
+5. 检查其他可能的原因（如 Command 观测值、PrevActions、action_scale 等）
+6. 考虑问题可能不在观测值符号，而在其他方面（如模型配置、物理参数等）
