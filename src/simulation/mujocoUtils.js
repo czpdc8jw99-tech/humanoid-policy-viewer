@@ -388,8 +388,10 @@ export async function reloadPolicy(policy_path, options = {}) {
   }
   
   // v9.0.5: 策略加载完成后立即打印初始状态（用于排查左倾问题）
-  if (this.simulation?.qpos && !this._printedInitOnce) {
-    this._printedInitOnce = true;
+  // 延迟一点执行，确保 simulation 已经初始化
+  setTimeout(() => {
+    if (this.simulation?.qpos && !this._printedInitOnce) {
+      this._printedInitOnce = true;
     const qpos0 = Array.from(this.simulation.qpos.slice(0, 7)).map((v) => Number(v).toFixed(6));
     console.log('[init qpos[0..6]] [x,y,z,q0,q1,q2,q3]=', qpos0);
     
@@ -456,7 +458,8 @@ export async function reloadPolicy(policy_path, options = {}) {
     } catch (e) {
       console.warn('[init debug] failed to read policy state:', e);
     }
-  }
+    }
+  }, 100); // 延迟 100ms 确保 simulation 已初始化
 }
 
 /**
