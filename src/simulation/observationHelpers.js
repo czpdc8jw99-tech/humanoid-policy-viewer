@@ -73,17 +73,17 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.25: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.23: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
     if (this.isLocoMode) {
-      // LocoMode 左倾修复：四元数重排序 [x,y,z,w] + 只取反 Y 轴
-      // v9.0.22-23 显示重排序后变右倾，说明方向对但需要配合 Y 轴取反
+      // LocoMode 左倾修复：只重排序四元数 [x,y,z,w]，不取反重力
+      // v9.0.23: 测试四元数顺序 - 如果 MuJoCo 存储的是 [x,y,z,w] 而非 [w,x,y,z]
       const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
       const gravityBody = quatApplyInv(
         quatReordered,
         gravityWorld
       );
-      // v9.0.25: 重排序四元数 + 只取反 Y 轴（测试组合效果）
-      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
+      // v9.0.23: 只重排序四元数，不取反重力
+      return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
     } else {
       // 其他策略：标准计算
       const gravityBody = quatApplyInv(
