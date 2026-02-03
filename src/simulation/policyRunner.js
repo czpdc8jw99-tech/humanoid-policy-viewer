@@ -254,7 +254,7 @@ export class PolicyRunner {
           // 打印原始状态（用于对比）
           rawState: {
             rootQuat: state.rootQuat ? Array.from(state.rootQuat).map(v => Number(v).toFixed(4)) : null,
-            rootAngVel: state.rootAngVel ? state.rootAngVel ? Array.from(state.rootAngVel).map(v => Number(v).toFixed(4)) : null : null
+            rootAngVel: state.rootAngVel ? Array.from(state.rootAngVel).map(v => Number(v).toFixed(4)) : null
           }
         });
         
@@ -262,6 +262,12 @@ export class PolicyRunner {
         checkObsSymmetry(jointPosRel, 'jointPosRel');
         checkObsSymmetry(jointVel, 'jointVel');
         if (prevActions) checkObsSymmetry(prevActions, 'prevActions');
+        
+        // v9.0.20: 打印完整的观测向量（用于排查策略网络输入）
+        console.log('[step 1 full observation vector]', Array.from(obsForPolicy).map((v, i) => ({
+          idx: i,
+          val: Number(v).toFixed(6)
+        })));
       }
 
       this.inputDict['policy'] = new ort.Tensor('float32', obsForPolicy, [1, obsForPolicy.length]);
