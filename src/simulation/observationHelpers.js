@@ -30,8 +30,12 @@ class RootAngVelB {
     // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
+    
+    // v9.0.21: 测试四元数顺序 - 与重力保持一致
+    const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
+    
     const omegaBody = quatApplyInv(
-      [quat[0], quat[1], quat[2], quat[3]],
+      quatReordered,
       [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
     );
     return new Float32Array([
@@ -51,13 +55,26 @@ class ProjectedGravityB {
     // LocoMode 左倾修复测试：用 quatApplyInv 替代显式公式，避免四元数顺序/轴向约定不一致
     // 世界重力向量 [0, 0, -1]（向下），通过四元数逆变换到 body frame
     const quat = state.rootQuat;
+    
+    // v9.0.21: 测试四元数顺序 - 如果 MuJoCo 存储的是 [x,y,z,w] 而非 [w,x,y,z]
+    // 尝试重新排列：如果当前是 [w,x,y,z]，尝试 [x,y,z,w] 顺序
+    const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
+    
     const gravityWorld = [0.0, 0.0, -1.0];
-    const gravityBody = quatApplyInv(
+    // 先尝试原始顺序
+    const gravityBody1 = quatApplyInv(
       [quat[0], quat[1], quat[2], quat[3]],
       gravityWorld
     );
-    // v9.0.20: 观测值对称但策略输出不对称，尝试对重力 Y 轴取反（训练可能用相反的 Y 轴约定）
-    return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
+    // 再尝试重排序后的顺序
+    const gravityBody2 = quatApplyInv(
+      quatReordered,
+      gravityWorld
+    );
+    
+    // v9.0.21: 尝试对整个重力向量取反（训练可能用相反的重力方向约定）
+    // 先测试重排序后的结果，如果还不行再试取反
+    return new Float32Array([-gravityBody2[0], -gravityBody2[1], -gravityBody2[2]]);
   }
 }
 
