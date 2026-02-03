@@ -111,6 +111,9 @@ export async function reloadScene(mjcf_path) {
 export async function reloadPolicy(policy_path, options = {}) {
   this.currentPolicyPath = policy_path;
   console.log('Reloading policy:', policy_path);
+  
+  // v9.0.18: 每次重新加载策略时重置打印标志，确保每次都能打印初始化状态
+  this._printedInitOnce = false;
 
   // 等待所有policyRunner完成推理 (v7.0.4)
   const isMultiRobot = this.robotConfigs && this.robotConfigs.length > 1;
@@ -166,7 +169,14 @@ export async function reloadPolicy(policy_path, options = {}) {
   
   // v9.0.18: 提取打印初始状态的函数，供 LocoMode 立即调用
   const printInitState = () => {
-    if (!this.simulation?.qpos || this._printedInitOnce) return;
+    if (!this.simulation?.qpos) {
+      console.warn('[init debug] simulation.qpos not available yet');
+      return;
+    }
+    if (this._printedInitOnce) {
+      console.warn('[init debug] already printed, skipping');
+      return;
+    }
     this._printedInitOnce = true;
     const qpos0 = Array.from(this.simulation.qpos.slice(0, 7)).map((v) => Number(v).toFixed(6));
     console.log('[init qpos[0..6]] [x,y,z,q0,q1,q2,q3]=', qpos0);
@@ -384,6 +394,7 @@ export async function reloadPolicy(policy_path, options = {}) {
     
     // v9.0.18: LocoMode 策略加载后立即打印初始状态（在设置完 default_joint_pos 后，policyJointNames 已设置）
     if (this.joint2motorIdx && this.joint2motorIdx.length > 0) {
+      console.log('[debug] Calling printInitState for LocoMode, _printedInitOnce=', this._printedInitOnce);
       printInitState();
     }
   }
