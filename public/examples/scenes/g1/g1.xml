@@ -5,7 +5,8 @@
         <default class="g1">
             <geom contype="0" conaffinity="0"/>
 
-            <joint frictionloss="0.1" solimplimit="0.97 0.995 0.001" damping="0.2"/>
+            <!-- LocoMode/FSMDeploy 兼容：damping=0.001（与 g1_29dof_rev_1_0 一致），原 0.2 会导致动力学差异和左倾 -->
+            <joint frictionloss="0.1" solimplimit="0.97 0.995 0.001" damping="0.001"/>
 
             <default class="hip">
                 <default class="hip_pitch">
