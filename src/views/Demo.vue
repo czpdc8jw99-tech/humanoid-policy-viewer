@@ -28,7 +28,7 @@
     <v-card class="controls-card">
       <v-card-title>
         Football Robot
-        <v-chip size="small" color="success" class="ml-2">v9.0.9</v-chip>
+        <v-chip size="small" color="success" class="ml-2">v9.0.10</v-chip>
       </v-card-title>
       <v-card-text class="py-0 controls-body">
           <v-btn
@@ -139,6 +139,32 @@
             >
               重置速度
             </v-btn>
+          </div>
+
+          <!-- 单关节排查：仅动一个关节，用于核对观测/动作顺序 -->
+          <div class="mt-2">
+            <span class="status-name">单关节排查</span>
+            <v-switch
+              v-model="singleJointDebug"
+              label="仅控制一个关节（其余固定）"
+              density="compact"
+              hide-details
+              color="primary"
+              class="mt-1"
+              @update:model-value="onSingleJointDebugChange"
+            ></v-switch>
+            <v-select
+              v-model="singleJointIndex"
+              :items="singleJointItems"
+              class="mt-2"
+              label="选择要动的关节"
+              density="compact"
+              hide-details
+              item-title="title"
+              item-value="value"
+              :disabled="!singleJointDebug"
+              @update:model-value="onSingleJointIndexChange"
+            ></v-select>
           </div>
           
           <v-divider class="my-2"/>
@@ -661,7 +687,10 @@ export default {
     // 手柄控制 (v9.0.0)
     gamepadEnabled: false,
     gamepadConnected: false,
-    gamepadCommand: [0.0, 0.0, 0.0]
+    gamepadCommand: [0.0, 0.0, 0.0],
+    // 单关节排查 (v9.0.10)：仅动一个关节以核对观测/动作顺序
+    singleJointDebug: false,
+    singleJointIndex: 0
   }),
   computed: {
     /**
@@ -796,6 +825,17 @@ export default {
       }
       return `${this.simStepHz.toFixed(1)} Hz`;
     },
+    // 单关节排查下拉项：来自当前策略的 policy_joint_names
+    singleJointItems() {
+      const names = this.demo?.policyJointNames;
+      if (!Array.isArray(names) || names.length === 0) {
+        return [];
+      }
+      return names.map((name, i) => ({
+        title: `${i}: ${name}`,
+        value: i
+      }));
+    },
     // v8.1.6: global motion dropdown items
     globalMotionItems() {
       const names = Array.isArray(this.availableMotions) ? this.availableMotions : [];
@@ -842,6 +882,17 @@ export default {
       if (this.demo && !this.gamepadEnabled) {
         // 只有在手柄未启用时才更新速度命令
         this.updateVelocityCommand();
+      }
+    },
+    // 单关节排查：开关或下拉变更时同步到 demo 并在控制台输出当前动的关节
+    onSingleJointDebugChange() {
+      if (this.demo && typeof this.demo.setSingleJointDebug === 'function') {
+        this.demo.setSingleJointDebug(this.singleJointDebug, this.singleJointIndex);
+      }
+    },
+    onSingleJointIndexChange() {
+      if (this.demo && typeof this.demo.setSingleJointDebug === 'function') {
+        this.demo.setSingleJointDebug(this.singleJointDebug, this.singleJointIndex);
       }
     },
     // v9.0.0: 更新速度命令到policyRunner
@@ -1508,6 +1559,13 @@ export default {
         // v9.0.0: 策略加载后，如果是loco模式，初始化速度命令
         if (this.isLocoModePolicy) {
           this.resetVelocityCommand();
+          // 单关节排查：UI 与 JSON 配置同步
+          if (this.demo.singleJointDebug !== undefined) {
+            this.singleJointDebug = this.demo.singleJointDebug;
+          }
+          if (Number.isInteger(this.demo.singleJointIndex)) {
+            this.singleJointIndex = Math.max(0, Math.min((this.demo.policyJointNames?.length ?? 29) - 1, this.demo.singleJointIndex));
+          }
         }
       } catch (error) {
         console.error('Failed to reload policy:', error);

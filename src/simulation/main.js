@@ -212,7 +212,24 @@ export class MuJoCoDemo {
     this.reloadScene = reloadScene.bind(this);
     this.reloadPolicy = reloadPolicy.bind(this);
     this.reloadPolicyForRobot = reloadPolicyForRobot.bind(this);
-    
+
+    /**
+     * 单关节排查：从 UI 设置仅动哪一个关节（其余固定 default），便于核对观测/动作顺序
+     * @param {boolean} enabled - 是否开启单关节模式
+     * @param {number} index - 策略关节索引 0..n-1
+     */
+    this.setSingleJointDebug = (enabled, index) => {
+      this.singleJointDebug = !!enabled;
+      const n = (this.policyJointNames?.length ?? 29) - 1;
+      this.singleJointIndex = Math.max(0, Math.min(n, parseInt(index, 10) || 0));
+      const name = this.policyJointNames?.[this.singleJointIndex] ?? `index ${this.singleJointIndex}`;
+      if (this.singleJointDebug) {
+        console.log(`[单关节排查] 当前仅控制: policy index ${this.singleJointIndex} — ${name}`);
+      } else {
+        console.log('[单关节排查] 已关闭，使用正常策略控制');
+      }
+    };
+
     // 多机器人配置 (v6.1.3)
     this.robotConfigs = []; // 机器人配置数组，包含每个机器人的位置信息 {x, y, z}
     this.robotPelvisBodyIds = []; // 存储每个机器人的pelvis body ID，用于快速定位和聚焦
@@ -865,7 +882,13 @@ export class MuJoCoDemo {
               if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions && this.actionTarget) {
                 // 可选：对右侧 roll 关节（policy 索引 4,16,18）做目标符号翻转，修正左倾
                 const effectiveTarget = new Float32Array(this.numActions);
-                if (this.flipRightRollSign && this.defaultJposPolicy) {
+                if (this.singleJointDebug && this.defaultJposPolicy) {
+                  // 单关节排查：除 single_joint_index 外全部用 default，只动一个关节（+0.3 rad）便于目视核对顺序
+                  const offset = 0.3;
+                  for (let i = 0; i < this.numActions; i++) {
+                    effectiveTarget[i] = this.defaultJposPolicy[i] + (i === this.singleJointIndex ? offset : 0);
+                  }
+                } else if (this.flipRightRollSign && this.defaultJposPolicy) {
                   const rightRollIndices = [4, 16, 18]; // right_hip_roll, right_shoulder_roll, right_ankle_roll
                   for (let i = 0; i < this.numActions; i++) {
                     effectiveTarget[i] = rightRollIndices.includes(i)

@@ -212,6 +212,15 @@ export async function reloadPolicy(policy_path, options = {}) {
   if (this.pdOnlyMode) {
     console.log('LocoMode: PD-only mode enabled - policy inference disabled, using default_joint_pos only');
   }
+
+  // LocoMode: 单关节排查模式——除 single_joint_index 外全部固定为 default，只动一个关节以核对“策略索引 ↔ 实际关节”对应
+  this.policyJointNames = policyJointNames.slice();
+  this.singleJointDebug = config.single_joint_debug === true;
+  this.singleJointIndex = Math.max(0, Math.min(this.numActions - 1, parseInt(config.single_joint_index, 10) || 0));
+  if (this.singleJointDebug) {
+    const name = this.policyJointNames[this.singleJointIndex] || `index ${this.singleJointIndex}`;
+    console.log(`LocoMode: Single-joint debug ON — only policy index ${this.singleJointIndex} (${name}) moves, others fixed at default. Change single_joint_index in JSON to test another.`);
+  }
   
   // LocoMode: 检测到joint2motor_idx时，强制使用FSMDeploy的timestep/decimation
   if (this.joint2motorIdx && this.joint2motorIdx.length > 0 && this.model) {

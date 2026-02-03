@@ -49,6 +49,13 @@
 - 已改为 **0.8**（与 g1.xml 及前两策略一致），原先 0.793 与 FSMDeploy 训练一致但可能使脚底接触略不同。
 - 若仍左倾，可再试 0.793 或微调 0.79–0.81 对比。
 
+## 单关节排查（核对观测/动作顺序）
+
+- 在 `loco_policy_29dof.json` 里打开 **`single_joint_debug: true`**，并设置 **`single_joint_index: 0`**（0～28）。
+- 行为：除该索引对应的关节外，**其余关节目标全部固定为 default**，只有这一个关节目标为 default + 0.3 rad，所以画面上**只会动一个关节**。
+- 用法：从 `single_joint_index: 0` 开始，看机器人实际动的是哪个关节（例如左髋 pitch），和配置里的 `policy_joint_names[0]`（应为 left_hip_pitch_joint）对照；再改成 1、2、3… 逐个核对。若某索引动的关节和 `policy_joint_names[i]` 不一致，说明**动作或观测顺序**在该处有错。
+- 改完索引后需**重新加载策略**（或刷新页面再选 LocoMode）才会生效。
+
 ## 若仍不平衡
 
 可再检查：
