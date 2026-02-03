@@ -1,4 +1,4 @@
-name: "v9.0.0: Fix joint names in loco policy and add locomotion mode with gamepad control"
+name: "v9.0.1: LocoMode ONNX export, observation order verified, add .venv-export to gitignore"
 
 on:
   push:

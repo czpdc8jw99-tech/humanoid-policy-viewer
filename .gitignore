@@ -47,6 +47,7 @@ dist
 
 # Python virtual environments
 .venv-onnx/
+.venv-export/
 .venv/
 venv/
 env/
