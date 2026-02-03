@@ -32,17 +32,31 @@ class RootAngVelB {
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.34: 恢复标准计算 - 对所有策略都做世界系→机体系转换
-    // v9.0.33 及之前各种修改都无效，恢复标准计算，检查问题是否在观测值符号
-    const omegaBody = quatApplyInv(
-      [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
-      [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
-    );
-    return new Float32Array([
-      omegaBody[0] * this.scale,
-      omegaBody[1] * this.scale,
-      omegaBody[2] * this.scale
-    ]);
+    // v9.0.38: 只对 LocoMode 应用特殊处理，其他策略使用标准计算
+    // v9.0.37 重力 X+Y 取反仍左倒，尝试配合角速度 X+Y 取反
+    if (this.isLocoMode) {
+      const omegaBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+        [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
+      );
+      // v9.0.38: 配合 flip_right_roll_sign + 重力 X+Y 取反，角速度也取反 X+Y
+      return new Float32Array([
+        -omegaBody[0] * this.scale,
+        -omegaBody[1] * this.scale,
+        omegaBody[2] * this.scale
+      ]);
+    } else {
+      // 其他策略：标准计算
+      const omegaBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]],
+        [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
+      );
+      return new Float32Array([
+        omegaBody[0] * this.scale,
+        omegaBody[1] * this.scale,
+        omegaBody[2] * this.scale
+      ]);
+    }
   }
 }
 
