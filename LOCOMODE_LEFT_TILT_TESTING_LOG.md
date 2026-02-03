@@ -22,7 +22,7 @@
 | v9.0.37 | `[w,x,y,z]` | 取反 X+Y `[-gx,-gy,gz]` | 标准转换 | **true** | 左倒 |
 | v9.0.38 | `[w,x,y,z]` | 取反 X+Y `[-gx,-gy,gz]` | 取反 X+Y `[-wx,-wy,wz]` | **true** | 左前倒 |
 | v9.0.39 | `[w,x,y,z]` | 只取反 Y `[gx,-gy,gz]` | 取反 X+Y `[-wx,-wy,wz]` | **true** | 往左+稍微往前 |
-| v9.0.40 | `[w,x,y,z]` | 取反 X+Y `[-gx,-gy,gz]` | 只取反 Y `[wx,-wy,wz]` | **true** | **待测试** |
+| v9.0.40 | `[w,x,y,z]` | 取反 X+Y `[-gx,-gy,gz]` | 只取反 Y `[wx,-wy,wz]` | **true** | 往左前 |
 
 ## 关键发现
 
