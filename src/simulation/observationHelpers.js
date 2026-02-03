@@ -50,8 +50,8 @@ class ProjectedGravityB {
     const gx = 2 * (-qz * qx + qw * qy);
     const gy = -2 * (qz * qy + qw * qx);
     const gz = 1 - 2 * (qw * qw + qz * qz);
-    
-    return new Float32Array([gx, gy, gz]);
+    // LocoMode 左倾修复：与训练约定对齐，左倾时 gy>0（取反后策略能正确“往右修正”）
+    return new Float32Array([gx, -gy, gz]);
   }
 }
 
