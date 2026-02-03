@@ -22,52 +22,72 @@ class RootAngVelB {
   constructor(policy, kwargs = {}) {
     this.policy = policy;
     this.scale = kwargs.ang_vel_scale ?? policy?.config?.ang_vel_scale ?? 1.0;
+    // v9.0.24: 判断是否是 LocoMode（通过 joint2motorIdx 判断）
+    this.isLocoMode = policy?.joint2motorIdx != null && policy.joint2motorIdx.length > 0;
   }
   get size() {
     return 3;
   }
   compute(state) {
-    // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
     const omegaWorld = state.rootAngVel;
     const quat = state.rootQuat;
     
-    // v9.0.21: 测试四元数顺序 - 与重力保持一致
-    const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
-    
-    const omegaBody = quatApplyInv(
-      quatReordered,
-      [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
-    );
-    return new Float32Array([
-      omegaBody[0] * this.scale,
-      omegaBody[1] * this.scale,
-      omegaBody[2] * this.scale
-    ]);
+    // v9.0.24: 只对 LocoMode 应用世界系→机体系转换，其他策略直接使用原始值
+    if (this.isLocoMode) {
+      // LocoMode 左倾修复：MuJoCo qvel 角速度为世界系，训练用机体系(B)；转为 body 后再输出
+      const omegaBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+        [omegaWorld[0], omegaWorld[1], omegaWorld[2]]
+      );
+      return new Float32Array([
+        omegaBody[0] * this.scale,
+        omegaBody[1] * this.scale,
+        omegaBody[2] * this.scale
+      ]);
+    } else {
+      // 其他策略：直接使用原始角速度（可能是世界系，但训练时也是世界系）
+      return new Float32Array([
+        omegaWorld[0] * this.scale,
+        omegaWorld[1] * this.scale,
+        omegaWorld[2] * this.scale
+      ]);
+    }
   }
 }
 
 class ProjectedGravityB {
+  constructor(policy, kwargs = {}) {
+    this.policy = policy;
+    // v9.0.24: 判断是否是 LocoMode（通过 joint2motorIdx 判断）
+    this.isLocoMode = policy?.joint2motorIdx != null && policy.joint2motorIdx.length > 0;
+  }
+  
   get size() {
     return 3;
   }
 
   compute(state) {
-    // LocoMode 左倾修复测试：用 quatApplyInv 替代显式公式，避免四元数顺序/轴向约定不一致
     // 世界重力向量 [0, 0, -1]（向下），通过四元数逆变换到 body frame
     const quat = state.rootQuat;
-    
-    // v9.0.23: 测试四元数顺序 - 如果 MuJoCo 存储的是 [x,y,z,w] 而非 [w,x,y,z]
-    // 只重排序，不取反重力（v9.0.22 取反后变成右倾，说明方向对但过度了）
-    const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
-    
     const gravityWorld = [0.0, 0.0, -1.0];
-    const gravityBody = quatApplyInv(
-      quatReordered,
-      gravityWorld
-    );
     
-    // v9.0.23: 只重排序四元数，不取反重力
-    return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
+    // v9.0.24: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    if (this.isLocoMode) {
+      // LocoMode 左倾修复：尝试原始四元数顺序 + 只取反 Y 轴（之前试过但可能当时四元数顺序错了）
+      const gravityBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
+        gravityWorld
+      );
+      // v9.0.24: 使用原始四元数顺序，只取反 Y 轴（测试是否是四元数顺序+重力Y轴的双重问题）
+      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
+    } else {
+      // 其他策略：标准计算
+      const gravityBody = quatApplyInv(
+        [quat[0], quat[1], quat[2], quat[3]],
+        gravityWorld
+      );
+      return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
+    }
   }
 }
 
