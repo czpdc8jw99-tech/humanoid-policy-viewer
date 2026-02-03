@@ -295,6 +295,10 @@ export async function reloadPolicy(policy_path, options = {}) {
         this.simulation.qpos[this.qpos_adr_policy[i]] = this.defaultJposPolicy[i];
       }
     }
+    // LocoMode: 与场景及前两策略一致，pelvis 初始 z=0.8（g1.xml 默认 0.8；若用 0.793 与 FSMDeploy 完全一致但可能加重左倾）
+    if (this.joint2motorIdx && this.joint2motorIdx.length > 0) {
+      this.simulation.qpos[2] = 0.8;
+    }
     this.simulation.forward();
   }
 

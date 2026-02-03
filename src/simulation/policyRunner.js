@@ -46,21 +46,29 @@ export class PolicyRunner {
     await this.module.init();
     this.reset();
     
-    // LocoMode: 50次预热，让策略状态稳定（类似FSMDeploy）
+    // LocoMode: 50次预热，让策略状态稳定（类似FSMDeploy）；最后一次输出写回 lastActions，与 FSMDeploy 第一步 PrevActions 一致
     if (this.joint2motorIdx && this.joint2motorIdx.length === this.numActions) {
       const zeroObs = new Float32Array(this.numObs);
       const zeroTensor = new ort.Tensor('float32', zeroObs, [1, zeroObs.length]);
       const zeroInput = { policy: zeroTensor };
-      
+      let lastResult = null;
       for (let i = 0; i < 50; i++) {
         try {
-          await this.module.runInference(zeroInput);
+          const [result] = await this.module.runInference(zeroInput);
+          lastResult = result;
         } catch (e) {
-          // 预热失败不影响，继续
           break;
         }
       }
-      console.log('LocoMode: Policy warmed up with 50 zero-observation runs');
+      if (lastResult && lastResult['action'] && lastResult['action'].data && lastResult['action'].data.length >= this.numActions) {
+        const data = lastResult['action'].data;
+        for (let j = 0; j < this.numActions; j++) {
+          this.lastActions[j] = data[j];
+        }
+        console.log('LocoMode: Policy warmed up with 50 zero-observation runs, lastActions set from final warm-up output');
+      } else {
+        console.log('LocoMode: Policy warmed up with 50 zero-observation runs');
+      }
     }
   }
 
