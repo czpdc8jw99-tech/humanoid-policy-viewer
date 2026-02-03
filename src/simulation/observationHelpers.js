@@ -56,25 +56,18 @@ class ProjectedGravityB {
     // 世界重力向量 [0, 0, -1]（向下），通过四元数逆变换到 body frame
     const quat = state.rootQuat;
     
-    // v9.0.21: 测试四元数顺序 - 如果 MuJoCo 存储的是 [x,y,z,w] 而非 [w,x,y,z]
-    // 尝试重新排列：如果当前是 [w,x,y,z]，尝试 [x,y,z,w] 顺序
+    // v9.0.23: 测试四元数顺序 - 如果 MuJoCo 存储的是 [x,y,z,w] 而非 [w,x,y,z]
+    // 只重排序，不取反重力（v9.0.22 取反后变成右倾，说明方向对但过度了）
     const quatReordered = [quat[1], quat[2], quat[3], quat[0]]; // [x,y,z,w] 顺序
     
     const gravityWorld = [0.0, 0.0, -1.0];
-    // 先尝试原始顺序
-    const gravityBody1 = quatApplyInv(
-      [quat[0], quat[1], quat[2], quat[3]],
-      gravityWorld
-    );
-    // 再尝试重排序后的顺序
-    const gravityBody2 = quatApplyInv(
+    const gravityBody = quatApplyInv(
       quatReordered,
       gravityWorld
     );
     
-    // v9.0.21: 尝试对整个重力向量取反（训练可能用相反的重力方向约定）
-    // 先测试重排序后的结果，如果还不行再试取反
-    return new Float32Array([-gravityBody2[0], -gravityBody2[1], -gravityBody2[2]]);
+    // v9.0.23: 只重排序四元数，不取反重力
+    return new Float32Array([gravityBody[0], gravityBody[1], gravityBody[2]]);
   }
 }
 
