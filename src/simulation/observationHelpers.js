@@ -76,15 +76,15 @@ class ProjectedGravityB {
     const quat = state.rootQuat;
     const gravityWorld = [0.0, 0.0, -1.0];
     
-    // v9.0.37: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
-    // v9.0.36 flip_right_roll_sign + 重力 Y 取反 → 向左倒，尝试取反 X+Y
+    // v9.0.39: 只对 LocoMode 应用特殊修复，其他策略使用标准计算
+    // v9.0.38 重力 X+Y + 角速度 X+Y 取反 → 左前倒，尝试只取反重力 Y + 角速度 X+Y
     if (this.isLocoMode) {
       const gravityBody = quatApplyInv(
         [quat[0], quat[1], quat[2], quat[3]], // 原始 [w,x,y,z] 顺序
         gravityWorld
       );
-      // v9.0.37: 配合 flip_right_roll_sign，取反重力 X 和 Y 轴
-      return new Float32Array([-gravityBody[0], -gravityBody[1], gravityBody[2]]);
+      // v9.0.39: 配合 flip_right_roll_sign + 角速度 X+Y 取反，只取反重力 Y 轴
+      return new Float32Array([gravityBody[0], -gravityBody[1], gravityBody[2]]);
     } else {
       // 其他策略：标准计算
       const gravityBody = quatApplyInv(
